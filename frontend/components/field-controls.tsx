@@ -1,0 +1,40 @@
+'use client';
+import {useEffect,useId,useRef,useState} from 'react';
+import {CalendarDays,Check,ChevronLeft,ChevronRight,Clock3,FileText,Package,TriangleAlert,Upload,X} from 'lucide-react';
+
+export function StatusChip({label,tone='blue',kind}:{label:string,tone?:string,kind?:string}){
+ const Icon=kind==='delivery'?Package:kind==='inspection'?CalendarDays:kind==='rfi'?FileText:['complete','completed','received','passed','approved','approved as noted','connected','active'].includes(label.trim().toLowerCase())?Check:tone==='amber'?TriangleAlert:Clock3;
+ return <span className={`ops-pill ${tone}`}><Icon size={17} aria-hidden="true"/>{label.replaceAll('_',' ')}</span>;
+}
+
+export function Choices({label,value,onChange,options,disabled=false}:{label:string,value:string,onChange:(v:string)=>void,options:{value:string,label:string}[],disabled?:boolean}){
+ return <div className="choice-buttons" role="group" aria-label={label}>{options.map(o=><button key={o.value} type="button" aria-pressed={value===o.value} disabled={disabled} onClick={e=>{onChange(o.value);e.currentTarget.dispatchEvent(new Event('input',{bubbles:true}));}}>{o.label}</button>)}</div>;
+}
+export function ChoiceField({name,label,options,defaultValue,disabled=false}:{name:string,label:string,options:string[],defaultValue?:string,disabled?:boolean}){
+ const [value,setValue]=useState(defaultValue||options[0]);
+ return <fieldset className="field-choices" disabled={disabled}><legend>{label}</legend><input type="hidden" name={name} value={value}/><Choices label={label} value={value} disabled={disabled} onChange={setValue} options={options.map(v=>({value:v,label:({'procurement-log':'Procurement log (CSV / XLSX)',schedule:'Schedule (CSV / XLSX)',document:'Document (PDF / TXT)'} as Record<string,string>)[v]||v}))}/></fieldset>;
+}
+export function ActivityChips({activities,selected=[]}:{activities:{id:string,name:string}[],selected?:string[]}){
+ return <fieldset className="field-choices"><legend>Activities affected</legend><div className="activity-chips">{activities.map(a=><label key={a.id}><input type="checkbox" name="activity_ids" value={a.id} defaultChecked={selected.includes(a.id)}/><span>{a.name}</span></label>)}</div><small>{activities.length?'Tap every activity this item affects.':'Create a schedule to link activities.'}</small></fieldset>;
+}
+
+const iso=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+export function DateField({name,label,defaultValue='',required=false}:{name:string,label:string,defaultValue?:string,required?:boolean}){
+ const id=useId(),[value,setValue]=useState(defaultValue),[open,setOpen]=useState(false),[month,setMonth]=useState(()=>new Date((defaultValue||iso(new Date()))+'T12:00:00'));
+ const button=useRef<HTMLButtonElement>(null),input=useRef<HTMLInputElement>(null);
+ const start=new Date(month.getFullYear(),month.getMonth(),1);const offset=(start.getDay()+6)%7;
+ function choose(v:string){setValue(v);input.current?.dispatchEvent(new Event('input',{bubbles:true}));setOpen(false);button.current?.focus();}
+ return <div className="date-field"><label htmlFor={id}>{label}</label><div className="date-entry"><input id={id} ref={input} name={name} value={value} onChange={e=>setValue(e.target.value)} required={required} placeholder="YYYY-MM-DD" pattern="\d{4}-\d{2}-\d{2}" title="Date in YYYY-MM-DD format" onBlur={()=>{if(input.current){const d=new Date(value+'T12:00:00');input.current.setCustomValidity(value&&(!Number.isFinite(d.getTime())||iso(d)!==value)?'Choose a valid calendar date.':'');}}}/><button type="button" ref={button} aria-label={`Choose ${label.toLowerCase()}`} aria-expanded={open} aria-controls={id+'-calendar'} onClick={()=>{if(value&&/^\d{4}-\d{2}-\d{2}$/.test(value)){const candidate=new Date(value+'T12:00:00');if(Number.isFinite(candidate.getTime()))setMonth(candidate);}setOpen(!open)}}><CalendarDays size={20}/>Choose date</button></div>{open&&<div className="calendar-panel" id={id+'-calendar'} onKeyDown={e=>{if(e.key==='Escape'){e.stopPropagation();setOpen(false);button.current?.focus()}}}><div className="calendar-heading"><button type="button" aria-label="Previous month" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft/></button><b aria-live="polite">{month.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</b><button type="button" aria-label="Next month" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight/></button></div><div className="calendar-grid">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day=><span key={day}>{day}</span>)}{Array.from({length:42},(_,i)=>{const d=new Date(month.getFullYear(),month.getMonth(),i-offset+1),s=iso(d);return <button key={s} type="button" className={d.getMonth()!==month.getMonth()?'adjacent-month':''} aria-label={d.toLocaleDateString('en-US',{dateStyle:'full'})} aria-pressed={value===s} onClick={()=>{input.current?.setCustomValidity('');choose(s)}}>{d.getDate()}</button>})}</div><div className="ops-actions"><button type="button" onClick={()=>{input.current?.setCustomValidity('');choose(iso(new Date()))}}>Today</button>{!required&&<button type="button" onClick={()=>{input.current?.setCustomValidity('');choose('')}}>Clear date</button>}</div></div>}</div>;
+}
+
+export function FileDrop({name='files',multiple=true,accept='.png,.jpg,.jpeg,.pdf,.txt',required=false}:{name?:string,multiple?:boolean,accept?:string,required?:boolean}){
+ const input=useRef<HTMLInputElement>(null),[files,setFiles]=useState<File[]>([]),[previews,setPreviews]=useState<string[]>([]),[error,setError]=useState(''),[drag,setDrag]=useState(false);
+ useEffect(()=>{const urls=files.map(f=>f.type.startsWith('image/')?URL.createObjectURL(f):'');setPreviews(urls);return()=>urls.filter(Boolean).forEach(u=>URL.revokeObjectURL(u));},[files]);
+ function syncInput(next:File[]){if(input.current){const transfer=new DataTransfer();next.forEach(f=>transfer.items.add(f));input.current.files=transfer.files;}}
+ function assign(next:File[]){
+  if(next.length>(multiple?5:1)||next.reduce((n,f)=>n+f.size,0)>10*1024*1024){setError('Choose up to '+(multiple?'5 files':'1 file')+' totaling no more than 10 MB.');syncInput(files);return;}
+  if(next.some(f=>!accept.split(',').some(ext=>f.name.toLowerCase().endsWith(ext)))){setError('Choose a supported file: '+accept);syncInput(files);return;}
+  setError('');setFiles(next);syncInput(next);input.current?.dispatchEvent(new Event('input',{bubbles:true}));
+ }
+ return <div className="file-drop" data-dragging={drag} onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)} onDrop={e=>{e.preventDefault();setDrag(false);assign(multiple?[...files,...Array.from(e.dataTransfer.files)]:Array.from(e.dataTransfer.files).slice(0,1))}}><Upload size={26} aria-hidden="true"/><b>Add a photo, markup, or project file</b><p>Drop files here, or choose from your device.</p><input ref={input} tabIndex={-1} onInvalid={e=>{e.preventDefault();setError('Choose a file before uploading.');e.currentTarget.parentElement?.querySelector('button')?.focus()}} className="file-input-accessible" aria-label="Choose project files" type="file" name={name} multiple={multiple} accept={accept} required={required} onChange={e=>assign(Array.from(e.target.files||[]))}/><button type="button" onClick={()=>input.current?.click()}>Choose files or photos</button><small>{multiple?'Up to 5 files':'One file'} · 10 MB maximum · {accept.replaceAll('.','').toUpperCase()}</small>{error&&<p role="alert" className="error">{error}</p>}{files.length>0&&<ul className="file-previews">{files.map((f,i)=><li key={f.name+i}>{previews[i]?<img src={previews[i]} alt={`Preview of ${f.name}`}/>:<FileText size={28}/>}<span><b>{f.name}</b><small>{Math.ceil(f.size/1024)} KB</small></span><button type="button" aria-label={'Remove '+f.name} onClick={()=>assign(files.filter((_,n)=>n!==i))}><X size={20}/></button></li>)}</ul>}</div>;
+}

@@ -1,0 +1,3 @@
+Activity ID,Activity Name,Trade,Start Date,Finish Date,Percent Complete,Predecessors,Successors
+A-210,Ceiling close and lighting installation,Electrical,2026-10-03,2026-10-08,0,,A-240
+A-240,Custom millwork installation,Millwork,2026-10-16,2026-10-20,0,A-210,
