@@ -28,7 +28,7 @@ export function activitySignals(a:Row,items:Row[],risks:Row[]){
 
 export function ScheduleView({board,items,risks,canEdit,busy,open,onProgress}:{board:Row,items:Row[],risks:Row[],canEdit:boolean,busy:boolean,open:(kind:string,row?:Row|null)=>void,onProgress:(a:Row,value:number)=>void}){
  const [view,setView]=useState('all');
- useEffect(()=>{if(new URLSearchParams(window.location.search).get('view')==='inspections')setView('inspections');},[]);
+ useEffect(()=>{const requested=new URLSearchParams(window.location.search).get('view');if(requested&&['calendar','all','today','blocked','complete','inspections'].includes(requested))setView(requested);},[]);
  const activities:Row[]=board.activities||[];
  const shown=finishPriority(activities).filter(a=>view==='all'||(view==='today'?['today','overdue'].includes(a.work_status):a.work_status===view));
  const variance=board.variance_days;
