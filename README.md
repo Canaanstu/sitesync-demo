@@ -2,9 +2,9 @@
 
 SiteSync helps commercial construction teams review schedule blockers, procurement, submittals, inspections, and RFI drafts. This repository contains the complete Next.js frontend and FastAPI backend.
 
-## Hosted demo
+## Free hosted demo
 
-Deploy the repository root as a Render Blueprint using `render.yaml`. The configuration runs both servers in one Docker service and stores demo data on a persistent disk. Review the service and disk charges before confirming deployment.
+Deploy the repository root as a Render Blueprint using `render.yaml`. The configuration runs both servers in one Docker service and stores fictional demo data temporarily. The service uses Render’s Free plan with no persistent disk. Data resets on sleep, restart, or deployment.
 
 Read [the hosting guide](deploy/PRIVATE-HOSTING.md) for setup and credentials. The landing page is at `/`; the app is at `/login`. Render creates the HTTPS address during deployment.
 
