@@ -20,12 +20,12 @@ def main():
     env['ENABLE_EMAIL_SEND']='false'
     # Hosted demo is intentionally a separate mode from the live production system.
     env['APP_ENV']='hosted-demo'
-    data=Path('/var/data')
+    data=Path(env.get('SITESYNC_DATA_DIR','/var/data'))
     data.mkdir(parents=True,exist_ok=True)
     local=Path('/app/backend/.local')
     if not local.exists():
         local.symlink_to(data,target_is_directory=True)
-    env.setdefault('DATABASE_URL','sqlite:////var/data/construction.db')
+    env.setdefault('DATABASE_URL','sqlite:///'+str(data/'construction.db'))
     children=[]
     def stop(*args):
         for child in children:

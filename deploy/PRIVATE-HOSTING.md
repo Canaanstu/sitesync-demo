@@ -1,26 +1,25 @@
-# Share SiteSync with your team
+# Share the free SiteSync demo
 
-This package deploys the complete demo, with a sign-in-protected HTTPS URL and a persistent SQLite disk. The website address itself is reachable from the internet; project records require a valid account. It is not a VPN-only service.
+The repository's render.yaml deploys one free Docker web service. The landing page is public; project records require sign-in. It uses fictional project data and temporary SQLite storage. No persistent disk or paid instance is requested.
 
-## Publish
+## Deploy
 
-1. Create a **private GitHub repository**. Upload the contents of `construction-ai` at the repository root. Exclude `.env`, `.local`, `.venv`, `node_modules`, `.next`, `tmp`, and local databases. Keep the included `.gitignore` and `.dockerignore`.
-2. Sign in at https://dashboard.render.com. Choose **New → Blueprint**, connect that private repository, and use `render.yaml`.
-3. Review Render's quoted service and disk costs before confirming. The configuration uses one 0.5 CPU / 512 MB web service (`0.5c-512mb`) and a 1 GB persistent disk. No paid service has been created by preparing these files.
-4. Wait for the deployment to become healthy. Render supplies the `https://...onrender.com` URL; no domain purchase is required.
-5. In the Render service's Environment settings, reveal the generated `PRIVATE_DEMO_PASSWORD`. Sign in with `demo@example.com` and that password. Do not put the password in source code or a public message.
-6. In SiteSync's organization Settings, create an individual account for each teammate. Use `member` for editing or `viewer` for read-only access. Grant each account project access in the project's Settings tab. Share the URL and each person's credentials through your usual private channel. Keep the owner password to yourself.
+1. In Render, create a Blueprint from the private Canaanstu/sitesync-demo repository, branch main, using render.yaml at the repository root.
+2. Name the Blueprint sitesync-demo. Confirm the service uses the Free plan and has no disk or paid resources before creating it.
+3. Wait for the Docker build and health check. Render supplies the public HTTPS URL.
+4. In the service Environment settings, copy the generated PRIVATE_DEMO_PASSWORD privately. Sign in at /login with demo@example.com and that password. The published local-development password is disabled.
+5. Create member or viewer accounts for teammates and grant project access. All account changes and project edits are temporary on this free deployment.
 
-## What remains simulated
+## Resettable data and startup
 
-The hosted demo seeds fresh fictional Schimenti projects. It does not upload your local database, attachments, real mailbox or credentials. AI uses demo templates; interface email sends are simulated. Inspection references are advisory, and carrier updates are manual.
+Render free services sleep after 15 minutes without traffic and can take about one minute to wake. Local database changes are lost on sleep, restart, or redeployment. SiteSync seeds fresh fictional Alo Yoga and Sage and Sound projects when the database is recreated. Share /login rather than a project deep link, since project IDs can change. Generated service secrets remain in Render's environment.
 
-The known local password `DemoProject2026!` is disabled for private hosting, the login screen does not prefill it, and authentication cookies require HTTPS. API records enforce organization/project access. Secrets are generated in Render and persist across deployments. Changing the private owner password updates that account on restart; to invalidate existing sessions, rotate `JWT_SECRET` too.
+The app displays a resettable-demo notice. Launch-form entries are also temporary: use fictional addresses when testing. This deployment must not be authoritative storage for launch requests or contractor data.
 
-Only one replica should use this SQLite disk. Back up the disk before destructive changes. For a real production rollout, use the app's separate live configuration, PostgreSQL, approved provider connections and a deployment/security review.
+Provider integrations and AI are simulated. Carrier updates are manual. Email sending is simulated. Public visitors cannot access project records without a valid account.
 
-## Verification status
+## Optional persistent hosting later
 
-Local authentication tests and frontend type checks can be run before upload. The Docker image and Render deployment must still be built and verified in the hosting account; a prepared configuration is not a published link.
+To retain edits, use a paid compute plan and a persistent disk mounted at /var/data, set SITESYNC_DATA_DIR=/var/data, DATABASE_URL=sqlite:////var/data/construction.db, and EPHEMERAL_DEMO=false. Review and approve charges first. Real production use requires separate production infrastructure and authorized integrations.
 
-References: https://render.com/docs/blueprint-spec and https://render.com/docs/disks
+References: https://render.com/docs/free and https://render.com/docs/blueprint-spec

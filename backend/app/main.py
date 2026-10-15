@@ -109,7 +109,7 @@ class MemberRequest(BaseModel):
 
 @app.get('/api/health')
 def health():
-    return {'status': 'ok', 'demo_mode': settings.demo_mode, 'local_auto_login': settings.demo_mode and not settings.private_demo}
+    return {'status': 'ok', 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo, 'local_auto_login': settings.demo_mode and not settings.private_demo}
 
 
 @app.post('/api/auth/login')
@@ -130,7 +130,7 @@ def logout(response: Response):
 
 @app.get('/api/me')
 def me(user=Auth):
-    return {**public(user), 'demo_mode': settings.demo_mode}
+    return {**public(user), 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo}
 
 
 @app.get('/api/organizations/current')

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', extra='ignore')
     app_env: str = 'development'
     demo_mode: bool = True
+    ephemeral_demo: bool = False
     app_url: str = 'http://localhost:3000'
     api_url: str = 'http://localhost:8000'
     database_url: str = 'sqlite:///.local/construction.db'

@@ -1,23 +1,23 @@
 # Create a PRIVATE Git repository with the contents of construction-ai at its root.
 # Sign-in protected web service: the URL is reachable, project data requires login.
-# Review Render's displayed charges before creating the paid service and disk.
+# Free demo: changes reset when Render replaces or restarts the instance.
 services:
   - type: web
     name: sitesync-demo
     runtime: docker
-    plan: 0.5c-512mb
+    plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     autoDeployTrigger: off
-    disk:
-      name: sitesync-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: APP_ENV
         value: hosted-demo
       - key: DEMO_MODE
         value: "true"
+      - key: EPHEMERAL_DEMO
+        value: "true"
+      - key: SITESYNC_DATA_DIR
+        value: /tmp/sitesync
       - key: PRIVATE_DEMO
         value: "true"
       - key: ENABLE_EMAIL_SEND
@@ -29,4 +29,4 @@ services:
       - key: TOKEN_ENCRYPTION_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:////var/data/construction.db
+        value: sqlite:////tmp/sitesync/construction.db
