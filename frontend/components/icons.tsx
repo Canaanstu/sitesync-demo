@@ -14,3 +14,11 @@ export function CrewIcon({size=22}:{size?:number}){
   <circle cx="19.5" cy="9.5" r="2"/><path d="M22.5 18v-1.2a2.8 2.8 0 0 0-2.8-2.8"/>
  </svg>;
 }
+
+// A blueprint sheet with grid lines and a pencil across it. Same 24px stroke style as lucide.
+export function BlueprintIcon({size=22}:{size?:number}){
+ return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <path d="M13 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/><path d="M3 9h16M9 3v18"/>
+  <path d="m21.2 13.8-6.7 6.7-3 .7.7-3 6.7-6.7a1.4 1.4 0 0 1 2 0l.3.3a1.4 1.4 0 0 1 0 2z"/>
+ </svg>;
+}

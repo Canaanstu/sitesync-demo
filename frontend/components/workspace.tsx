@@ -3,13 +3,13 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash2, ArrowDownToLine, ArrowRight, ArrowUpRight, Bot, CalendarDays, Check, ChevronLeft, Construction, FolderOpen, Hammer, CircleHelp, ClipboardList, FileText, House, Link2, LoaderCircle, LogOut, Mail, MessageCircleQuestion, MoreHorizontal, Package, Plus, RefreshCw, Settings, Sparkles, Swords, Trophy, Upload, X } from 'lucide-react';
+import { Trash2, ArrowDownToLine, ArrowRight, ArrowUpRight, Bot, CalendarDays, Check, ChevronLeft, Construction, FolderOpen, Hammer, CircleHelp, ClipboardList, FileText, House, Link2, LoaderCircle, LogOut, Mail, MessageCircleQuestion, MoreHorizontal, Package, Plus, RefreshCw, Settings, Sparkles, Trophy, Upload, X } from 'lucide-react';
 import { api, Row } from '../lib/api';
 import { Operations } from './operations';
 import { MailComposer } from './mail-composer';
 import { Logo } from './logo';
 import { Splash } from './splash';
-import { HammerNails, CrewIcon } from './icons';
+import { HammerNails, CrewIcon, BlueprintIcon } from './icons';
 import {QuestCard,TypeChip,PriorityChip,levelOf,nextStep,xpFor,ProjectDirectory,DailyOverview,Tutorial} from './project-hub';
 import {ProjectAssistant} from './project-assistant';
 import {CrewChat} from './crew-chat';
@@ -73,7 +73,7 @@ export function Workspace() {
   // Clearing a task is safe to abandon mid-request, so Escape and the close button always work there. Dialogs that submit forms stay locked while saving.
   const lockModal=busy&&modal?.type!=='risk';
   const modalBehavior=useDialog(modal?modal.type+':'+(modal.title||''):'',()=>{setModal(null);setError('')},lockModal);
-  useEffect(()=>{const names:Record<string,string>={overview:'Quests',risks:'Quests',schedule:'Schedule',procurement:'Procurement',rfi:'RFIs',agents:'Agents',chat:'Crew chat',records:'Project records',documents:'Documents',ai:'Ask Project AI',settings:'Settings'};document.title=isLogin?(isSignup?'Create account · SiteSync':authMode==='forgot'||authMode==='reset'?'Reset password · SiteSync':authMode==='verify'?'Confirm email · SiteSync':'Sign in · SiteSync'):projectId?`${names[section]||'Project'} · ${project.data?.name?.split('|')[0]||'Project'} · SiteSync`:`${path==='/integrations'?'Integrations':path==='/settings'?'Organization settings':path==='/projects'?'Projects':path==='/tutorial'?'Tutorial':'Overview'} · SiteSync`;},[path,project.data?.name]);
+  useEffect(()=>{const names:Record<string,string>={overview:'Tasks',risks:'Tasks',schedule:'Schedule',procurement:'Procurement',rfi:'RFIs',agents:'Agents',chat:'Crew chat',records:'Project records',documents:'Documents',ai:'Ask Project AI',settings:'Settings'};document.title=isLogin?(isSignup?'Create account · SiteSync':authMode==='forgot'||authMode==='reset'?'Reset password · SiteSync':authMode==='verify'?'Confirm email · SiteSync':'Sign in · SiteSync'):projectId?`${names[section]||'Project'} · ${project.data?.name?.split('|')[0]||'Project'} · SiteSync`:`${path==='/integrations'?'Integrations':path==='/settings'?'Organization settings':path==='/projects'?'Projects':path==='/tutorial'?'Tutorial':'Overview'} · SiteSync`;},[path,project.data?.name]);
   useEffect(()=>{if(syncState.data?.status==='complete'){for(const key of ['risks','projects','project','records','schedule','ops-board','ops-procurement','ops-agents'])cache.invalidateQueries({queryKey:key==='projects'?['projects']:[key,projectId]});}},[syncState.data?.finished_at]);
 
   async function run(fn:()=>Promise<void>){setBusy(true);setError('');setNotice('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
@@ -88,14 +88,14 @@ export function Workspace() {
     const status=({resolve:'resolved',dismiss:'dismissed',reopen:'open'} as Record<string,string>)[action];
     cache.setQueryData(['risks',projectId],(old:Row[]|undefined)=>old?.map(r=>r.id===risk.id?{...r,status}:r));
     setModal(null);
-    if(action==='resolve'){try{award(xpFor(risk.severity),'Quest cleared')}catch{}}else setNotice(action==='reopen'?'Back on the list.':'Skipped.');
+    if(action==='resolve'){try{award(xpFor(risk.severity),'Task done')}catch{}}else setNotice(action==='reopen'?'Back on the list.':'Skipped.');
     void cache.invalidateQueries();
   })}
   function sources(list:Row[]=[]){return <div className="sources">{list.map((s,i)=><button key={s.id+i} onClick={()=>showSource(s)}><FileText size={12}/>{s.label||labels[s.type]||s.type}<ArrowUpRight size={11}/></button>)}</div>}
 
   const needs=openRisks.length, syncing=['queued','running'].includes(syncState.data?.status);
   const first=(me.data?.full_name||'').split(' ')[0];
-  const dock=[['overview','Quests',Swords],['schedule','Plan',CalendarDays],['procurement','Materials',Package],['agents','Crew',CrewIcon],['more','More',MoreHorizontal]] as const;
+  const dock=[['overview','Tasks',BlueprintIcon],['schedule','Plan',CalendarDays],['procurement','Materials',Package],['agents','Crew',CrewIcon],['more','More',MoreHorizontal]] as const;
   const groups:Record<string,string[]>={procurement:['procurement','rfi'],agents:['agents','chat'],more:['more','records','documents']};
   const chatUnread=useQuery({queryKey:['chat-unread',projectId],queryFn:()=>api(`/projects/${projectId}/chat/unread`),enabled:!!projectId&&!!me.data,refetchInterval:15000});
   const unreadChat=section==='chat'?0:chatUnread.data?.unread||0;
@@ -131,7 +131,7 @@ export function Workspace() {
    <header className="proj-head"><Link href="/projects" className="icon back" aria-label="All projects"><ChevronLeft size={20}/></Link><Ring value={current?.completion_percent} size={60} stroke={8} label="Project completion"/><div className="proj-title"><h1>{project.data?.name?.split('|')[0]||'…'}</h1><small>{project.data?.finish_date?`Finish ${fmt(project.data.finish_date)}`:'No finish date'}</small></div><div className="proj-actions"><button className="icon" aria-label="Upload data" title="Upload data" disabled={busy||!canEdit} onClick={()=>setModal({type:'upload',title:'Add data'})}><Upload size={18}/></button><button className="icon" aria-label="Sync project" title="Sync project" disabled={busy||!canEdit||syncing} onClick={()=>run(async()=>{await act(`/projects/${projectId}/sync`);await cache.invalidateQueries({queryKey:['sync',projectId]});setNotice('Syncing…')})}><RefreshCw size={18} className={syncing?'spin':''}/></button><Link className="icon" href={`/projects/${projectId}/settings`} aria-label="Project settings" aria-current={section==='settings'?'page':undefined}><Settings size={18}/></Link></div></header>
    {syncState.data?.status==='failed'&&<div className="error">{syncState.data.detail}</div>}
    {section==='overview'&&<section>
-     <div className="section-title"><h2>Quests <span className="count">{needs}</span></h2><button className="ghost-btn" disabled={busy||!canEdit} onClick={()=>run(async()=>{await act(`/projects/${projectId}/risks/run`);await refresh();setNotice('Rescanned')})}><RefreshCw size={15}/>Rescan</button></div>
+     <div className="section-title"><h2>Tasks <span className="count">{needs}</span></h2><button className="ghost-btn" disabled={busy||!canEdit} onClick={()=>run(async()=>{await act(`/projects/${projectId}/risks/run`);await refresh();setNotice('Rescanned')})}><RefreshCw size={15}/>Rescan</button></div>
      {needs>6&&<Choices label="Filter by priority" value={severity} onChange={setSeverity} options={[{value:'all',label:`All ${needs}`},...(['high','medium','low'] as const).map(l=>({value:l,label:`${l[0].toUpperCase()+l.slice(1)} ${openRisks.filter(r=>levelOf(r.severity)===l).length}`}))]}/>}
      <div className="quests">{openRisks.filter(r=>severity==='all'||levelOf(r.severity)===severity).map((r,i)=><QuestCard key={r.id} risk={r} index={i} onOpen={()=>setModal({type:'risk',title:r.title,risk:r})}/>)}</div>
      {!needs&&<Empty title="All clear"/>}{needs>0&&!openRisks.some(r=>severity==='all'||levelOf(r.severity)===severity)&&<Empty title="None at this level"/>}
@@ -167,6 +167,6 @@ export function Workspace() {
   {modal.type==='member'&&<form onSubmit={e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));run(async()=>{await act('/organizations/members',data);await refresh();setModal(null);setNotice('Member created. Assign project access in project settings.')})}}><label>Full name<input name="full_name" required/></label><label>Email<input name="email" type="email" required/></label><label>Initial password<input name="password" type="password" minLength={12} maxLength={72} required autoComplete="new-password"/></label><ChoiceField name="role" label="Role" options={me.data?.role==='owner'?['member','viewer','admin']:['member','viewer']}/><button className="primary" disabled={busy}>Create member</button></form>}
   {modal.type==='join'&&<form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(async()=>{const r=await api('/organizations/join',{invite_code:String(f.get('code')),password:String(f.get('password'))});cache.clear();setModal(null);router.push('/dashboard');setNotice(`You joined ${r.organization_name}.`)})}}><p className="lead">Enter the invite code from your company administrator. Your current workspace and its sample projects are removed, and you see your company’s projects and tasks instead.</p><label>Invite code<input name="code" key={joinCode} defaultValue={joinCode} required minLength={4} maxLength={40} autoComplete="off"/></label><label>Confirm your password<input name="password" type="password" required maxLength={72} autoComplete="current-password"/></label><button className="primary big wide" disabled={busy}>Join company</button></form>}
   {modal.type==='delete'&&<form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(async()=>{await api('/me',{password:String(f.get('password'))},'DELETE');cache.clear();router.push('/')})}}><p className="lead">This permanently deletes your workspace, projects and records. It can’t be undone.</p><label>Confirm your password<input name="password" type="password" required maxLength={72} autoComplete="current-password"/></label><button className="primary big wide" disabled={busy}>Delete everything</button></form>}
-  {modal.type==='help'&&<div className="steps"><div className="step"><span className="step-emoji"><Swords size={26}/></span><b>Pick a quest</b></div><div className="step"><span className="step-emoji"><Mail size={26}/></span><b>Review the draft</b><small>Nothing sends without you</small></div><div className="step"><span className="step-emoji"><Trophy size={26}/></span><b>Clear it, earn XP</b></div></div>}
+  {modal.type==='help'&&<div className="steps"><div className="step"><span className="step-emoji"><BlueprintIcon size={26}/></span><b>Pick a task</b></div><div className="step"><span className="step-emoji"><Mail size={26}/></span><b>Review the draft</b><small>Nothing sends without you</small></div><div className="step"><span className="step-emoji"><Trophy size={26}/></span><b>Clear it, earn XP</b></div></div>}
   </section></div>}</div>
 }

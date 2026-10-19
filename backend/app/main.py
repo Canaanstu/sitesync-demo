@@ -428,7 +428,7 @@ def invite_by_email(body: InviteEmail, db: Session = Db, user=Auth):
     steps = ('Sign in, open Settings and choose "Join an existing company". Your current workspace is replaced by the company workspace.' if existing
              else 'Create your account with this link and you will land in the company workspace with its projects and tasks.')
     sent = send_email(email, f'{user.full_name or "A teammate"} invited you to {org.name} on SiteSync',
-                      f'Hi,\n\n{user.full_name or "A teammate"} invited you to join {org.name} on SiteSync, where the crew shares projects, quests and schedules.\n\n{steps}\n\n{link}\n\nIf you were not expecting this, ignore this message.')
+                      f'Hi,\n\n{user.full_name or "A teammate"} invited you to join {org.name} on SiteSync, where the crew shares projects, tasks and schedules.\n\n{steps}\n\n{link}\n\nIf you were not expecting this, ignore this message.')
     if not sent:
         raise HTTPException(502, 'The invitation email could not be sent. Try again in a moment, or copy the invite link instead.')
     audit(db, user, 'organization.invite', {'email_domain': email.split('@')[-1]})

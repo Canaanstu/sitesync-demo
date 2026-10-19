@@ -1,11 +1,11 @@
 // In-browser stand-in for the SiteSync API, used only by the static GitHub Pages build
 // (NEXT_PUBLIC_STATIC_DEMO=true). Reads come from recorded fictional demo data; a few actions
-// (quests, schedule progress, receiving deliveries) change in-memory state that resets on reload.
+// (tasks, schedule progress, receiving deliveries) change in-memory state that resets on reload.
 import raw from './demo-data.json';
 type Row=Record<string,any>;
 const data:Record<string,any>=JSON.parse(JSON.stringify(raw));
 const AUTH='sitesync:static-demo-auth';
-const unsupported='This action needs the live backend. The static preview supports quests, schedule progress and deliveries.';
+const unsupported='This action needs the live backend. The static preview supports tasks, schedule progress and deliveries.';
 const wait=()=>new Promise(r=>setTimeout(r,60));
 const authed=()=>{try{return localStorage.getItem(AUTH)==='1'}catch{return true}};
 

@@ -1,7 +1,8 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
-import {ArrowRight,Bot,CalendarDays,Check,CircleHelp,ClipboardList,Mail,Package,Plus,Search,ShieldCheck,Swords,Trophy,Flame} from 'lucide-react';
+import {ArrowRight,Bot,CalendarDays,Check,CircleHelp,ClipboardList,Mail,Package,Plus,Search,ShieldCheck,Trophy,Flame} from 'lucide-react';
+import {BlueprintIcon} from './icons';
 import {Logo} from './logo';
 import {Splash} from './splash';
 import {Tower} from './tower';
@@ -32,13 +33,13 @@ function LiveDemo({cta}:{cta:{href:string,label:string}}){
  return <div className="live" id="live">
   <Tower xp={xp} compact/>
   {pop&&<div className="live-pop" aria-live="polite">{pop}</div>}
-  <div className="live-quests" role="list" aria-label="Sample quests">
+  <div className="live-quests" role="list" aria-label="Sample tasks">
    {SAMPLE.map((q,i)=>{const isDone=done.includes(i),isOpen=open===i&&!isDone;return <div role="listitem" key={q.t} className={'live-quest '+q.level+(isDone?' done':'')}>
     <button className="live-row" aria-expanded={isOpen} disabled={isDone} onClick={()=>setOpen(isOpen?null:i)}><span className="row-icon">{isDone?<Check size={20}/>:<q.icon size={20}/>}</span><span className="row-main"><b>{q.t}</b><span className="quest-meta"><PriorityChip value={q.level}/><small>{q.cat}</small></span></span><span className="quest-reward">+{q.xp}<small>XP</small></span></button>
     {isOpen&&<div className="live-detail"><p>{q.next}</p><div className="ops-actions"><button className="primary small" onClick={()=>finish(i)}><Check size={14}/>Mark done</button></div></div>}
    </div>})}
   </div>
-  <div className="live-foot">{cleared?<><b>Tower complete.</b><Link className="button primary" href={cta.href}>{cta.label}<ArrowRight size={16}/></Link></>:<small>Illustrative preview. Tap a quest, mark it done, and watch the tower grow.</small>}{done.length>0&&!cleared&&<button className="ghost small" onClick={()=>{setDone([]);setOpen(null)}}>Reset</button>}</div>
+  <div className="live-foot">{cleared?<><b>Tower complete.</b><Link className="button primary" href={cta.href}>{cta.label}<ArrowRight size={16}/></Link></>:<small>Illustrative preview. Tap a task, mark it done, and watch the tower grow.</small>}{done.length>0&&!cleared&&<button className="ghost small" onClick={()=>{setDone([]);setOpen(null)}}>Reset</button>}</div>
  </div>;
 }
 
@@ -85,7 +86,7 @@ export function Landing(){
     <div className="section-head reveal"><span className="eyebrow-tag"><i/>A clearer daily workflow</span><h2>From scattered updates to a clear next step.</h2></div>
     <div className="steps3">{[
      {n:'01',icon:ClipboardList,t:'Bring the facts together',d:'Upload logs and schedules or connect approved records, with links back to the source of every recommendation.'},
-     {n:'02',icon:Swords,t:'See what could hold up work',d:'Delivery conflicts, unanswered questions and inspection prerequisites show up beside the work they affect.'},
+     {n:'02',icon:BlueprintIcon,t:'See what could hold up work',d:'Delivery conflicts, unanswered questions and inspection prerequisites show up beside the work they affect.'},
      {n:'03',icon:ShieldCheck,t:'Review. Approve. Move forward.',d:'Get the follow-up drafted, edit it, and approve it. Nothing leaves without you.'},
     ].map((s,i)=><article key={s.n} className="step3 reveal" style={{transitionDelay:i*90+'ms'}}><span className="step-n">{s.n}</span><span className="row-icon"><s.icon size={22}/></span><h3>{s.t}</h3><p>{s.d}</p></article>)}</div>
    </section>
@@ -96,8 +97,8 @@ export function Landing(){
    </section>
 
    <section className="site-band reveal">
-    <div><span className="eyebrow-tag light"><i/>Make it a habit</span><h2>Clear quests. Earn XP. Build the tower.</h2><p>A daily goal, a streak and a tower that grows floor by floor. Small rewards for the follow-ups that usually slip.</p></div>
-    <div className="band-chips"><span><Flame size={18}/>Day streak</span><span><Trophy size={18}/>XP and levels</span><span><Swords size={18}/>Daily goal</span></div>
+    <div><span className="eyebrow-tag light"><i/>Make it a habit</span><h2>Finish tasks. Earn XP. Build the tower.</h2><p>A daily goal, a streak and a tower that grows floor by floor. Small rewards for the follow-ups that usually slip.</p></div>
+    <div className="band-chips"><span><Flame size={18}/>Day streak</span><span><Trophy size={18}/>XP and levels</span><span><BlueprintIcon size={18}/>Daily goal</span></div>
    </section>
 
    <section className="site-section" id="faq">
