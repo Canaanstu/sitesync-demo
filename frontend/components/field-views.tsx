@@ -109,7 +109,7 @@ export function ScheduleView({board,items,risks,canEdit,busy,open,onProgress,war
    {current==='lookahead'&&<select value={weeks} onChange={e=>setWeeks(Number(e.target.value))} aria-label="Weeks ahead">{WEEKS.map(w=><option key={w} value={w}>{w}-week lookahead</option>)}</select>}
    {filterActive&&<button className="ghost small" onClick={()=>{setQ('');setTrade('all');setStatus('all')}}>Clear</button>}
   </div>}
-  {current==='calendar'?<ScheduleCalendar board={{...board,activities:filtered}} open={open} warnings={warnings}/>:current==='lookahead'?<div className="lookahead">
+  {current==='calendar'?<ScheduleCalendar board={{...board,activities:filtered,inspections:filterActive?[]:board.inspections}} open={open} warnings={filterActive?warnings.filter(w=>w.kind==='work'&&filtered.some(a=>'work:'+a.id===w.key)):warnings}/>:current==='lookahead'?<div className="lookahead">
    {Array.from({length:weeks},(_,w)=>{const rows=ahead.filter(a=>weekOf(a)===w),start=addDays(asOf,w*7);return <section key={w} className="look-week"><h3>{w===0?'This week':`Week of ${dateLabel(start)}`}<small>{rows.length} {rows.length===1?'task':'tasks'} · {dateLabel(start)} – {dateLabel(addDays(start,6))}</small></h3>
     <div className="list">{rows.map(activityRow)}{!rows.length&&<p className="muted look-empty">Nothing scheduled.</p>}</div></section>})}
   </div>:current==='inspections'?<>

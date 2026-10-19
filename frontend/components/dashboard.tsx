@@ -44,7 +44,12 @@ function CompanyCalendar({ops}:{ops:ReturnType<typeof useOps>}){
  const [month,setMonth]=useState(()=>new Date());
  const first=new Date(month.getFullYear(),month.getMonth(),1),start=new Date(first);start.setDate(1-(first.getDay()+6)%7);
  const dates=Array.from({length:42},(_,i)=>new Date(start.getFullYear(),start.getMonth(),start.getDate()+i));
- const today=iso(new Date()),due=(useQuery({queryKey:['notifications'],queryFn:()=>api<Row[]>('/notifications'),refetchInterval:60000}).data||[]);
+ const today=iso(new Date()),limit=iso(new Date(Date.now()+7*864e5));
+ // "n due" flags come from the same (already filtered) projects as the events, so they never leak in from other projects.
+ const due=(key:string)=>key>limit?[]:ops.flatMap(({project,board,proc})=>[
+  ...(board?.activities||[]).filter((a:Row)=>a.work_status!=='complete'&&(a.raw_json?.due_date||a.finish_date)===key).map((a:Row)=>({t:a.name,p:short(project.name)})),
+  ...(board?.inspections||[]).filter((i:Row)=>!['passed','failed'].includes(i.status)&&i.data.scheduled_date===key).map((i:Row)=>({t:'Inspection: '+i.data.name,p:short(project.name)})),
+  ...(proc?.items||[]).filter((x:Row)=>x.status!=='delivered'&&x.expected_delivery_date===key).map((x:Row)=>({t:'Delivery: '+x.name,p:short(project.name)}))]);
  const events=(key:string)=>ops.flatMap(({project,board,proc})=>{
   const href=`/projects/${project.id}/schedule`,pn=short(project.name),out:{id:string,label:string,sub:string,kind:string,href:string}[]=[];
   (board?.activities||[]).forEach((a:Row)=>{if(a.start_date&&a.start_date<=key&&(a.finish_date||a.start_date)>=key)out.push({id:a.id,label:a.name,sub:pn,kind:a.work_status==='complete'?'event-complete':'',href})});
@@ -55,7 +60,7 @@ function CompanyCalendar({ops}:{ops:ReturnType<typeof useOps>}){
  const asOf=iso(new Date()),rows=[{label:'Work',dates:ops.flatMap(o=>(o.board?.activities||[]).filter((a:Row)=>a.work_status!=='complete').map((a:Row)=>a.raw_json?.due_date||a.finish_date))},{label:'Inspections',dates:ops.flatMap(o=>(o.board?.inspections||[]).filter((i:Row)=>!['passed','failed'].includes(i.status)).map((i:Row)=>i.data.scheduled_date))},{label:'Deliveries',dates:ops.flatMap(o=>(o.proc?.items||[]).filter((x:Row)=>x.status!=='delivered').map((x:Row)=>x.expected_delivery_date))}];
  return <><DueOverview asOf={asOf} rows={rows}/><section className="panel calendar-panel"><div className="section-heading"><h3 aria-live="polite">{month.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</h3><div className="ops-actions"><button aria-label="Previous month" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft/></button><button onClick={()=>setMonth(new Date())}>Today</button><button aria-label="Next month" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight/></button></div></div>
   <div className="schedule-calendar-scroll"><div className="schedule-calendar" aria-label="All projects calendar">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=><b className="calendar-weekday" key={d}>{d}</b>)}
-   {dates.map(d=>{const key=iso(d);return <div className={'calendar-day '+(d.getMonth()!==month.getMonth()?'outside-month ':'')+(key===today?'calendar-today':'')} key={key}><time dateTime={key}>{d.getDate()}</time>{due.filter(w=>w.due===key).length>0&&<span className="due-flag" title={due.filter(w=>w.due===key).map(w=>w.project_name+': '+w.title).join('\n')}>{due.filter(w=>w.due===key).length} due</span>}
+   {dates.map(d=>{const key=iso(d);return <div className={'calendar-day '+(d.getMonth()!==month.getMonth()?'outside-month ':'')+(key===today?'calendar-today':'')} key={key}><time dateTime={key}>{d.getDate()}</time>{due(key).length>0&&<span className="due-flag" title={due(key).map(w=>w.p+': '+w.t).join('\n')}>{due(key).length} due</span>}
     {events(key).map(e=><Link key={e.id+key} href={e.href} className={'calendar-event '+e.kind}>{e.label}<small>{e.sub}</small></Link>)}</div>})}
   </div></div></section></>;
 }
@@ -106,12 +111,19 @@ function ProjectFilter({projects,value,onChange}:{projects:Row[],value:string,on
 
 const TABS=[['home','Overview',Home],['schedule','Schedule',CalendarDays],['procurement','Procurement',Package]] as const;
 export function Dashboard({projects,name,company}:{projects:Row[],name?:string,company?:string}){
- const [tab,setTab]=useState<string>('home'),[only,setOnly]=useState('all'),all=useOps(projects),ops=only==='all'?all:all.filter(o=>o.project.id===only);
+ const [tab,setTab]=useState<string>('home'),[only,setOnly]=useState('all'),[q,setQ]=useState(''),[trade,setTrade]=useState('all'),[status,setStatus]=useState('all'),all=useOps(projects);
+ const byProject=only==='all'?all:all.filter(o=>o.project.id===only);
+ const trades=[...new Set(byProject.flatMap(o=>(o.board?.activities||[]).map((a:Row)=>a.trade).filter(Boolean)))].sort() as string[];
+ const narrowed=!!q.trim()||trade!=='all'||status!=='all';
+ // Search, trade and status describe work, so while one is set the calendar shows only the matching work.
+ const ops=narrowed?byProject.map(o=>({...o,board:o.board&&{...o.board,activities:(o.board.activities||[]).filter((a:Row)=>(trade==='all'||a.trade===trade)&&(status==='all'||a.work_status===status)&&`${a.name} ${a.trade||''}`.toLowerCase().includes(q.trim().toLowerCase())),inspections:[]},proc:o.proc&&{...o.proc,items:[]}})):byProject;
  return <div className="dash"><ProjectList projects={projects}/>
   <div className="dash-main">
    <div className="tabs" role="tablist" aria-label="Dashboard">{TABS.map(([k,label,Icon])=><button key={k} role="tab" aria-selected={tab===k} className={tab===k?'active':''} onClick={()=>setTab(k)}><Icon size={16}/>{label}</button>)}</div>
    {tab==='home'&&<DailyOverview projects={projects} name={name} company={company} slot={<ProjectCards ops={all}/>}/>}
-   {tab==='schedule'&&<><h1>Schedule</h1><ProjectFilter projects={projects} value={only} onChange={setOnly}/><CompanyCalendar ops={ops}/></>}
+   {tab==='schedule'&&<><h1>Schedule</h1><ProjectFilter projects={projects} value={only} onChange={v=>{setOnly(v);setTrade('all')}}/>
+    <div className="filter-bar" role="search" aria-label="Filter the calendar"><input type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Search tasks, e.g. drywall" aria-label="Search tasks"/>{trades.length>0&&<select value={trade} onChange={e=>setTrade(e.target.value)} aria-label="Trade"><option value="all">All trades</option>{trades.map(t=><option key={t}>{t}</option>)}</select>}<select value={status} onChange={e=>setStatus(e.target.value)} aria-label="Status">{[['all','Any status'],['upcoming','Not started'],['today','In progress'],['blocked','Blocked'],['overdue','Overdue'],['complete','Complete']].map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>{narrowed&&<button className="ghost small" onClick={()=>{setQ('');setTrade('all');setStatus('all')}}>Clear</button>}</div>
+    <CompanyCalendar ops={ops}/></>}
    {tab==='procurement'&&<><h1>Procurement</h1><ProjectFilter projects={projects} value={only} onChange={setOnly}/><Procurement ops={ops}/></>}
   </div></div>;
 }

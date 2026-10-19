@@ -384,7 +384,9 @@ def logout(response: Response):
 @app.get('/api/me')
 def me(db: Session = Db, user=Auth):
     org = db.get(Organization, user.organization_id)
-    return {**public(user), 'organization_name': org.name if org else '', 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo}
+    default_name = bool(org) and org.name.endswith("'s workspace")
+    renamed = bool(org) and db.scalar(select(Audit.id).where(Audit.organization_id == org.id, Audit.action == 'organization.rename').limit(1)) is not None
+    return {**public(user), 'organization_name': org.name if org else '', 'organization_named': not default_name or renamed, 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo}
 
 
 @app.get('/api/organizations/current')

@@ -200,3 +200,21 @@ def test_new_task_has_duration_due_date_and_a_one_week_warning(c):
     assert edited['name'] == 'Paint walls' and 'due_date' not in edited['raw_json']
     far = ok(c.post(f'/api/projects/{pid}/ops/activities', json={'name': 'Punch list', 'start_date': (date.today() + timedelta(days=60)).isoformat(), 'duration_days': 2}))
     assert not any(w['key'] == f'work:{far["id"]}' for w in ok(c.get(f'/api/projects/{pid}/warnings')))
+
+
+def test_company_counts_as_named_after_saving_even_with_a_workspace_style_name(c):
+    me = ok(c.get('/api/me'))
+    assert me['organization_named'] is True  # signed up with an explicit company name
+    ok(c.post('/api/organizations', json={'name': "Canaan's workspace"}))
+    assert ok(c.get('/api/me'))['organization_named'] is True
+
+
+def test_default_workspace_name_is_unnamed_until_saved(monkeypatch):
+    _limits.clear()
+    monkeypatch.setattr(settings, 'open_signup', True)
+    with TestClient(app) as client:
+        ok(client.post('/api/auth/signup', json={'email': f'canaan{os.urandom(3).hex()}@example.com', 'full_name': 'Canaan Test', 'password': PASSWORD, 'company': ''}))
+        me = ok(client.get('/api/me'))
+        assert me['organization_name'].endswith("'s workspace") and me['organization_named'] is False
+        ok(client.post('/api/organizations', json={'name': me['organization_name']}))
+        assert ok(client.get('/api/me'))['organization_named'] is True
