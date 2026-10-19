@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
+import {ThemeToggle} from './theme-toggle';
 import {ArrowRight,Bot,CalendarDays,Check,CircleHelp,ClipboardList,Mail,Package,Plus,Search,ShieldCheck,Trophy,Flame} from 'lucide-react';
 import {BlueprintIcon} from './icons';
 import {Logo} from './logo';
@@ -33,9 +34,9 @@ function LiveDemo({cta}:{cta:{href:string,label:string}}){
  return <div className="live" id="live">
   <Tower xp={xp} compact/>
   {pop&&<div className="live-pop" aria-live="polite">{pop}</div>}
-  <div className="live-quests" role="list" aria-label="Sample tasks">
-   {SAMPLE.map((q,i)=>{const isDone=done.includes(i),isOpen=open===i&&!isDone;return <div role="listitem" key={q.t} className={'live-quest '+q.level+(isDone?' done':'')}>
-    <button className="live-row" aria-expanded={isOpen} disabled={isDone} onClick={()=>setOpen(isOpen?null:i)}><span className="row-icon">{isDone?<Check size={20}/>:<q.icon size={20}/>}</span><span className="row-main"><b>{q.t}</b><span className="quest-meta"><PriorityChip value={q.level}/><small>{q.cat}</small></span></span><span className="quest-reward">+{q.xp}<small>XP</small></span></button>
+  <div className="live-tasks" role="list" aria-label="Sample tasks">
+   {SAMPLE.map((q,i)=>{const isDone=done.includes(i),isOpen=open===i&&!isDone;return <div role="listitem" key={q.t} className={'live-task '+q.level+(isDone?' done':'')}>
+    <button className="live-row" aria-expanded={isOpen} disabled={isDone} onClick={()=>setOpen(isOpen?null:i)}><span className="row-icon">{isDone?<Check size={20}/>:<q.icon size={20}/>}</span><span className="row-main"><b>{q.t}</b><span className="task-meta"><PriorityChip value={q.level}/><small>{q.cat}</small></span></span><span className="task-reward">+{q.xp}<small>XP</small></span></button>
     {isOpen&&<div className="live-detail"><p>{q.next}</p><div className="ops-actions"><button className="primary small" onClick={()=>finish(i)}><Check size={14}/>Mark done</button></div></div>}
    </div>})}
   </div>
@@ -67,7 +68,7 @@ export function Landing(){
  return <div className="gx site"><Splash/>
   <header className={'site-nav'+(scrolled?' scrolled':'')}><Link href="/" className="brand" aria-label="SiteSync home"><Logo/><span>SiteSync</span></Link>
    <nav aria-label="Main"><a href="#how">How it works</a><a href="#features">What’s inside</a><a href="#faq">Questions</a></nav>
-   <div className="site-actions">{signup&&<Link className="ghost-btn" href="/login">Sign in</Link>}<Link className="button primary" href={cta.href}>{cta.label}<ArrowRight size={16}/></Link></div></header>
+   <div className="site-actions"><ThemeToggle/>{signup&&<Link className="ghost-btn" href="/login">Sign in</Link>}<Link className="button primary" href={cta.href}>{cta.label}<ArrowRight size={16}/></Link></div></header>
   <main>
    <section className="site-hero">
     <div className="hero-copy">

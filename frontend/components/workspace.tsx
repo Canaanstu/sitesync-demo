@@ -10,7 +10,8 @@ import { MailComposer } from './mail-composer';
 import { Logo } from './logo';
 import { Splash } from './splash';
 import { HammerNails, CrewIcon, BlueprintIcon } from './icons';
-import {QuestCard,TypeChip,PriorityChip,levelOf,nextStep,xpFor,ProjectDirectory,DailyOverview,Tutorial} from './project-hub';
+import {ThemeToggle} from './theme-toggle';
+import {TaskCard,TypeChip,PriorityChip,levelOf,nextStep,xpFor,ProjectDirectory,DailyOverview,Tutorial} from './project-hub';
 import {ProjectAssistant} from './project-assistant';
 import {CrewChat} from './crew-chat';
 import {ChoiceField,Choices,FileDrop,StatusChip} from './field-controls';
@@ -123,7 +124,7 @@ export function Workspace() {
   return <div className="gx app"><Splash/>
   <header className="topbar"><Link href="/dashboard" className="brand" aria-label="SiteSync home"><Logo/><span>SiteSync</span></Link>
    <nav className="topnav" aria-label="Main"><Link aria-current={path==='/dashboard'?'page':undefined} className={path==='/dashboard'?'active':''} href="/dashboard"><House size={18}/><span>Home</span></Link><Link aria-current={projectId||path==='/projects'?'page':undefined} className={projectId||path==='/projects'?'active':''} href="/projects"><HammerNails size={18}/><span>Projects</span></Link><Link aria-current={path==='/integrations'?'page':undefined} className={path==='/integrations'?'active':''} href="/integrations"><Link2 size={18}/><span>Tools</span></Link></nav>
-   <div className="top-right">{me.data?.organization_name&&<Link href="/settings" className="org-pill" title="Your company">{me.data.organization_name}</Link>}<GameBar/><button className="icon" aria-label="Help" onClick={()=>setModal({type:'help',title:'How it works'})}><CircleHelp size={18}/></button><Link className="icon" href="/settings" aria-label="Settings" aria-current={path==='/settings'?'page':undefined}><Settings size={18}/></Link><button className="icon" aria-label="Sign out" onClick={()=>run(async()=>{await api('/auth/logout',{});cache.clear();router.push('/login')})}><LogOut size={18}/></button></div></header>
+   <div className="top-right">{me.data?.organization_name&&<Link href="/settings" className="org-pill" title="Your company">{me.data.organization_name}</Link>}<GameBar/><ThemeToggle/><button className="icon" aria-label="Help" onClick={()=>setModal({type:'help',title:'How it works'})}><CircleHelp size={18}/></button><Link className="icon" href="/settings" aria-label="Settings" aria-current={path==='/settings'?'page':undefined}><Settings size={18}/></Link><button className="icon" aria-label="Sign out" onClick={()=>run(async()=>{await api('/auth/logout',{});cache.clear();router.push('/login')})}><LogOut size={18}/></button></div></header>
   <main className="content">{admin&&path!=='/settings'&&/'s workspace$/.test(me.data?.organization_name||'')&&<div className="verify-bar" role="status"><span>Name your company so teammates know where they work and can join you.</span><Link className="button small" href="/settings">Name it</Link></div>}{me.data?.email_verified===false&&<div className="verify-bar" role="status"><span>Confirm your email to secure your account.</span><button className="small" disabled={busy} onClick={()=>run(async()=>{await api('/auth/resend-verification',{});setNotice('Email sent. Check your inbox.')})}>Resend email</button></div>}
   {(error||queryError)&&<div className="error" role="alert">{error||(queryError as Error)?.message}<button className="icon" aria-label="Dismiss error" onClick={()=>setError('')}><X size={15}/></button></div>}
   {notice&&<div role="status" className="toast"><Check size={16}/>{notice}</div>}
@@ -133,7 +134,7 @@ export function Workspace() {
    {section==='overview'&&<section>
      <div className="section-title"><h2>Tasks <span className="count">{needs}</span></h2><button className="ghost-btn" disabled={busy||!canEdit} onClick={()=>run(async()=>{await act(`/projects/${projectId}/risks/run`);await refresh();setNotice('Rescanned')})}><RefreshCw size={15}/>Rescan</button></div>
      {needs>6&&<Choices label="Filter by priority" value={severity} onChange={setSeverity} options={[{value:'all',label:`All ${needs}`},...(['high','medium','low'] as const).map(l=>({value:l,label:`${l[0].toUpperCase()+l.slice(1)} ${openRisks.filter(r=>levelOf(r.severity)===l).length}`}))]}/>}
-     <div className="quests">{openRisks.filter(r=>severity==='all'||levelOf(r.severity)===severity).map((r,i)=><QuestCard key={r.id} risk={r} index={i} onOpen={()=>setModal({type:'risk',title:r.title,risk:r})}/>)}</div>
+     <div className="task-list">{openRisks.filter(r=>severity==='all'||levelOf(r.severity)===severity).map((r,i)=><TaskCard key={r.id} risk={r} index={i} onOpen={()=>setModal({type:'risk',title:r.title,risk:r})}/>)}</div>
      {!needs&&<Empty title="All clear"/>}{needs>0&&!openRisks.some(r=>severity==='all'||levelOf(r.severity)===severity)&&<Empty title="None at this level"/>}
    </section>}
    {['procurement','rfi'].includes(section)&&<SubNav projectId={projectId!} section={section} tabs={[['procurement','Materials'],['rfi','RFIs']]}/>}

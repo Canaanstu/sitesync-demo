@@ -23,7 +23,7 @@ Production env vars on `sitesync-api`: `APP_ENV=hosted-demo`, `DEMO_MODE=true`, 
 
 ## Static demo on GitHub Pages
 
-https://canaanstu.github.io/sitesync-demo/ is a static build with no backend. It uses recorded fictional data (`frontend/lib/demo-data.json`) and an in-browser mock API (`frontend/lib/mock-api.ts`). Quests, schedule progress and deliveries work and reset on reload; uploads, new projects and AI answers are disabled. `.github/workflows/pages.yml` deploys it on pushes to `main` (Settings → Pages → Source must be "GitHub Actions"). To refresh the data, run a freshly seeded local backend and `python deploy/record-demo-fixtures.py`. Build locally with `SITESYNC_STATIC=true NEXT_PUBLIC_STATIC_DEMO=true NEXT_PUBLIC_BASE_PATH=/sitesync-demo npx next build` in `frontend`.
+https://canaanstu.github.io/sitesync-demo/ is a static build with no backend. It uses recorded fictional data (`frontend/lib/demo-data.json`) and an in-browser mock API (`frontend/lib/mock-api.ts`). Tasks, schedule progress and deliveries work and reset on reload; uploads, new projects and AI answers are disabled. `.github/workflows/pages.yml` deploys it on pushes to `main` (Settings → Pages → Source must be "GitHub Actions"). To refresh the data, run a freshly seeded local backend and `python deploy/record-demo-fixtures.py`. Build locally with `SITESYNC_STATIC=true NEXT_PUBLIC_STATIC_DEMO=true NEXT_PUBLIC_BASE_PATH=/sitesync-demo npx next build` in `frontend`.
 
 ## Local development
 

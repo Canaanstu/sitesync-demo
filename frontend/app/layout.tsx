@@ -5,6 +5,7 @@ export const metadata = {title:'SiteSync | Construction Intelligence', descripti
 export default function Layout({children}:{children:React.ReactNode}) {
   return <html lang="en" suppressHydrationWarning>
     <head>
+      <script dangerouslySetInnerHTML={{__html:"try{var t=localStorage.getItem('sitesync:theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.dataset.theme=t}catch(e){}"}}/>
       <script dangerouslySetInnerHTML={{__html:"try{if(sessionStorage.getItem('sitesync:splash'))document.documentElement.classList.add('seen-splash')}catch(e){}"}}/>
       <link rel="preconnect" href="https://fonts.googleapis.com"/>
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin=""/>

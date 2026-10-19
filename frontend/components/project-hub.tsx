@@ -33,12 +33,12 @@ export function nextStep(r:Row){
  return 'Review the linked records, confirm the impact with the responsible person, and agree on a due date.';
 }
 
-export function QuestCard({risk,onOpen,index=0}:{risk:Row,onOpen:()=>void,index?:number}){
+export function TaskCard({risk,onOpen,index=0}:{risk:Row,onOpen:()=>void,index?:number}){
  const c=CAT[risk.category]||{icon:<Pin size={20}/>,label:'Item'},lvl=levelOf(risk.severity);
- return <button className={'quest '+lvl} style={{animationDelay:index*50+'ms'}} onClick={onOpen}>
-  <span className="quest-icon" aria-hidden="true">{c.icon}</span>
-  <span className="quest-body"><b>{risk.title}</b><span className="quest-meta"><PriorityChip value={risk.severity}/><small>{c.label}{risk.due_date?` · due ${new Date(risk.due_date.slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}`:''}</small></span></span>
-  <span className="quest-reward">+{xpFor(risk.severity)}<small>XP</small></span>
+ return <button className={'task '+lvl} style={{animationDelay:index*50+'ms'}} onClick={onOpen}>
+  <span className="task-icon" aria-hidden="true">{c.icon}</span>
+  <span className="task-body"><b>{risk.title}</b><span className="task-meta"><PriorityChip value={risk.severity}/><small>{c.label}{risk.due_date?` · due ${new Date(risk.due_date.slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}`:''}</small></span></span>
+  <span className="task-reward">+{xpFor(risk.severity)}<small>XP</small></span>
  </button>;
 }
 
@@ -103,9 +103,9 @@ export function ProjectDirectory({projects}:{projects:Row[]}){
 }
 
 const CREW_GUIDE:[ReactNode,string,ReactNode][]=[
- [<Users size={22} key="a"/>,'Your company is your crew','Everyone who joins your company shares its projects, tasks, schedules, materials and RFIs. When a teammate clears a quest, it is cleared for everyone. Your XP and tower stay personal.'],
+ [<Users size={22} key="a"/>,'Your company is your crew','Everyone who joins your company shares its projects, tasks, schedules, materials and RFIs. When a teammate clears a task, it is cleared for everyone. Your XP and tower stay personal.'],
  [<UserPlus size={22} key="b"/>,'Invite a teammate by email','Open Settings, then Company, enter their email and choose Send invite. New people get a link that creates their account inside your company. People who already have an account get a link that opens the join dialog after they sign in. You can also copy the invite link or code and send it yourself.'],
- [<ShieldCheck size={22} key="c"/>,'Roles',<ul className="role-list" key="c2"><li><b>Owner</b> · full control, can add administrators.</li><li><b>Admin</b> · invites people, manages project access and settings.</li><li><b>Member</b> · works quests, schedules, materials and RFIs.</li><li><b>Viewer</b> · can look but not change anything.</li></ul>],
+ [<ShieldCheck size={22} key="c"/>,'Roles',<ul className="role-list" key="c2"><li><b>Owner</b> · full control, can add administrators.</li><li><b>Admin</b> · invites people, manages project access and settings.</li><li><b>Member</b> · works tasks, schedules, materials and RFIs.</li><li><b>Viewer</b> · can look but not change anything.</li></ul>],
  [<FolderLock size={22} key="d"/>,'Joining from an existing account','Someone who already has an account joins from Settings with the company code. This only works while they are alone in their own workspace, and it replaces that workspace (just its sample projects) with the company one. A code that was shared too widely can be replaced with New code, and the old one stops working.'],
  [<Bot size={22} key="e"/>,'The Crew tab','Inside a project, Crew is your coordinator and inspection researcher. They prepare the next steps from your project records. Nothing is sent to anyone until a person reviews and approves it.'],
  [<FolderLock size={22} key="f"/>,'Project access','New teammates see every company project. An admin can take someone off a single project in that project’s Settings, under Access.'],
