@@ -27,7 +27,7 @@ function Badge({value}:{value:string}) {if(['low','medium','high','critical'].in
 function Empty({icon,title,detail}:{icon?:React.ReactNode,title:string,detail?:string}) { return <div className="empty"><span className="empty-art">{icon??<Trophy size={30}/>}</span><h3>{title}</h3>{detail&&<p>{detail}</p>}</div> }
 
 export function Workspace() {
-  const path=usePathname(), router=useRouter(), cache=useQueryClient();
+  const path=(usePathname()||'/').replace(/(.)\/$/,'$1'), router=useRouter(), cache=useQueryClient();
   const isLogin=path==='/login';
   const parts=path.split('/').filter(Boolean), projectId=parts[0]==='projects'?parts[1]:undefined;
   const section=parts[2]==='risks'?'overview':parts[2]||'overview';

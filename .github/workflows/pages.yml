@@ -1,0 +1,50 @@
+# Publishes the static demo (recorded fictional data, in-browser mock API) to GitHub Pages.
+name: Deploy static demo to GitHub Pages
+on:
+  push:
+    branches: [main]
+    paths: ['frontend/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - name: Install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile --ignore-workspace
+      - name: Build static site
+        working-directory: frontend
+        env:
+          SITESYNC_STATIC: 'true'
+          NEXT_PUBLIC_STATIC_DEMO: 'true'
+          NEXT_PUBLIC_BASE_PATH: /sitesync-demo
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          pnpm exec next build
+          touch out/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/out
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

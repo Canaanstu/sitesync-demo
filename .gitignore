@@ -16,3 +16,4 @@ output/
 !**/.env.example
 **/*.pem
 **/*.key
+frontend/out/
