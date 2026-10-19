@@ -169,6 +169,7 @@ def grant_projects(db, org_id, member_id=None, project_id=None):
 class Login(BaseModel):
     email: str = Field(max_length=254)
     password: str = Field(max_length=72)
+    remember: bool = False
 
 
 class Name(BaseModel):
@@ -251,12 +252,14 @@ def login(body: Login, request: Request, response: Response, db: Session = Db):
     user = db.scalar(select(User).where(User.email == body.email.lower().strip()))
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, 'Email or password is incorrect.')
-    start_session(response, user)
+    start_session(response, user, body.remember)
     return public(user)
 
 
-def start_session(response, user):
-    response.set_cookie('session', token_for(user), httponly=True, secure=settings.app_env == 'production' or settings.private_demo, samesite='lax', max_age=28800, path='/')
+def start_session(response, user, remember=False):
+    # "Remember me" keeps the person signed in for 30 days instead of 8 hours.
+    hours = 24 * 30 if remember else 8
+    response.set_cookie('session', token_for(user, hours), httponly=True, secure=settings.app_env == 'production' or settings.private_demo, samesite='lax', max_age=hours * 3600, path='/')
 
 
 @app.post('/api/auth/signup')

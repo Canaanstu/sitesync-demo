@@ -37,9 +37,9 @@ def password_fingerprint(user):
     return hashlib.sha256(user.password_hash.encode()).hexdigest()[:16]
 
 
-def token_for(user):
+def token_for(user, hours=8):
     # 'pw' ties a session to the current password, so a reset signs out older sessions.
-    return jwt.encode({'sub': user.id, 'pw': password_fingerprint(user), 'exp': datetime.now(timezone.utc) + timedelta(hours=8), 'iat': datetime.now(timezone.utc)}, settings.jwt_secret, algorithm='HS256')
+    return jwt.encode({'sub': user.id, 'pw': password_fingerprint(user), 'exp': datetime.now(timezone.utc) + timedelta(hours=hours), 'iat': datetime.now(timezone.utc)}, settings.jwt_secret, algorithm='HS256')
 
 
 def _mail_key():

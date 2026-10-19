@@ -161,3 +161,15 @@ def test_delete_draft_rfi_mail_and_uploaded_document(c):
     ok(c.delete(f'/api/projects/{pid}/records/documents/{doc["id"]}'))
     assert not any(d['id'] == doc['id'] for d in ok(c.get(f'/api/projects/{pid}/documents')))
     assert c.delete(f'/api/projects/{pid}/records/emails/anything').status_code == 404
+
+
+def test_remember_me_keeps_the_session_for_thirty_days(monkeypatch):
+    _limits.clear()
+    monkeypatch.setattr(settings, 'open_signup', True)
+    email = f'remember{os.urandom(3).hex()}@example.com'
+    with TestClient(app) as client:
+        ok(client.post('/api/auth/signup', json={'email': email, 'full_name': 'Remember Me', 'password': PASSWORD, 'company': 'Remember Co'}))
+        short = client.post('/api/auth/login', json={'email': email, 'password': PASSWORD})
+        long = client.post('/api/auth/login', json={'email': email, 'password': PASSWORD, 'remember': True})
+        assert 'Max-Age=28800' in short.headers['set-cookie']
+        assert f'Max-Age={30 * 24 * 3600}' in long.headers['set-cookie']
