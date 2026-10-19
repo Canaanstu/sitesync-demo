@@ -989,6 +989,29 @@ def source_record(project_id: str, kind: str, record_id: str, db: Session = Db, 
     return result
 
 
+@app.delete('/api/projects/{project_id}/records/{kind}/{record_id}')
+def delete_record(project_id: str, kind: str, record_id: str, db: Session = Db, user=Auth):
+    """Lets a person remove an RFI draft or an uploaded document. Imported project records stay put."""
+    project_access(db, user, project_id)
+    require_write(user)
+    cls = {'rfis': RFI, 'documents': Document}.get(kind)
+    row = db.get(cls, record_id) if cls else None
+    if not row or row.project_id != project_id:
+        raise HTTPException(404, 'Record not found in this project.')
+    if kind == 'rfis':
+        if row.status != 'draft':
+            raise HTTPException(422, 'Only draft RFIs can be deleted.')
+        for a in (row.raw_json or {}).get('attachments', []):
+            att = db.get(Workflow, a.get('id'))
+            if att and att.project_id == project_id and att.kind == 'attachment':
+                db.delete(att)
+    else:
+        db.execute(delete(Chunk).where(Chunk.document_id == row.id))
+    db.delete(row)
+    db.commit()
+    return {'ok': True}
+
+
 @app.get('/api/projects/{project_id}/{kind}')
 def records(project_id: str, kind: str, db: Session = Db, user=Auth):
     project_access(db, user, project_id)

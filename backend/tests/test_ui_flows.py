@@ -145,3 +145,19 @@ def test_organization_projects_and_integrations(c):
     ok(c.delete(f'/api/integrations/{conn["id"]}'))
     ok(c.post('/api/auth/logout', json={}))
     assert c.get('/api/me').status_code == 401
+
+
+def test_delete_draft_rfi_mail_and_uploaded_document(c):
+    pid = project(c)
+    ops = f'/api/projects/{pid}/ops'
+    rfi = ok(c.post(f'{ops}/rfis/generate', data={'description': 'Please confirm the required installation location for the item shown.'}))
+    mail = ok(c.post(f'{ops}/mail/prepare', json={'rfi_id': rfi['id']}))
+    ok(c.delete(f'{ops}/mail/{mail["id"]}'))
+    assert c.delete(f'{ops}/mail/{mail["id"]}').status_code == 404
+    ok(c.delete(f'/api/projects/{pid}/records/rfis/{rfi["id"]}'))
+    assert not any(r['id'] == rfi['id'] for r in ok(c.get(f'{ops}/rfis')))
+    ok(c.post(f'/api/projects/{pid}/uploads/document', files={'file': ('coordination-notes.txt', (SAMPLES / 'coordination-notes.txt').read_bytes())}))
+    doc = next(d for d in ok(c.get(f'/api/projects/{pid}/documents')) if d['filename'] == 'coordination-notes.txt')
+    ok(c.delete(f'/api/projects/{pid}/records/documents/{doc["id"]}'))
+    assert not any(d['id'] == doc['id'] for d in ok(c.get(f'/api/projects/{pid}/documents')))
+    assert c.delete(f'/api/projects/{pid}/records/emails/anything').status_code == 404

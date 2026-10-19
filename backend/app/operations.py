@@ -524,6 +524,17 @@ def rfi_edit(project_id:str,rfi_id:str,body:RFIEdits,db:Session=Db,user=Auth):
     return public(row)
 
 
+@router.delete('/mail/{mail_id}')
+def mail_delete(project_id:str,mail_id:str,db:Session=Db,user=Auth):
+    access(db,user,project_id,True)
+    row=get_row(db,Workflow,project_id,mail_id)
+    if row.kind!='mail':
+        raise HTTPException(404,'Email not found.')
+    db.delete(row)
+    db.commit()
+    return {'ok':True}
+
+
 @router.get('/attachments/{attachment_id}')
 def download(project_id:str,attachment_id:str,db:Session=Db,user=Auth):
     access(db,user,project_id)
