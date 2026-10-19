@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     bootstrap_password: str = ''
     # Hosted demos retain fictional data, but never use the published local login.
     private_demo: bool = False
+    # Let visitors create their own account and private workspace. Throttled so a free database cannot be flooded.
+    open_signup: bool = False
+    signups_per_hour: int = 60
+    max_organizations: int = 2000
     private_demo_password: str = ''
 
 

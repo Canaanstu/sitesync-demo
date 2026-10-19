@@ -8,14 +8,16 @@ from fastapi import FastAPI, Depends, HTTPException, Request, Response, UploadFi
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, func, text
+from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import *
 from .security import *
-from .seed import initialize, seed_project
+from .seed import initialize, seed_project, seed_workspace
 from .risk_engine import run_rules
 from .connectors import OAuthConnector, save_tokens, valid_token, Procore, Microsoft
 from .parsing import parse_table, parse_document
@@ -127,6 +129,12 @@ class ProjectSettings(BaseModel):
     workbooks: list[Workbook] = Field(default_factory=list, max_length=10)
 
 
+class Signup(BaseModel):
+    email: str = Field(max_length=254, pattern=r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+    full_name: str = Field(min_length=2, max_length=120)
+    password: str = Field(min_length=12, max_length=72)
+
+
 class AIRequest(BaseModel):
     question: str = Field(default='', max_length=4000)
     risk_id: str | None = None
@@ -141,7 +149,7 @@ class MemberRequest(BaseModel):
 
 @app.get('/api/health')
 def health():
-    return {'status': 'ok', 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo, 'local_auto_login': settings.demo_mode and not settings.private_demo}
+    return {'status': 'ok', 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo, 'local_auto_login': settings.demo_mode and not settings.private_demo, 'signup_open': settings.open_signup}
 
 
 @app.post('/api/auth/login')
@@ -150,7 +158,44 @@ def login(body: Login, request: Request, response: Response, db: Session = Db):
     user = db.scalar(select(User).where(User.email == body.email.lower().strip()))
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, 'Email or password is incorrect.')
+    start_session(response, user)
+    return public(user)
+
+
+def start_session(response, user):
     response.set_cookie('session', token_for(user), httponly=True, secure=settings.app_env == 'production' or settings.private_demo, samesite='lax', max_age=28800, path='/')
+
+
+@app.post('/api/auth/signup')
+def signup(body: Signup, request: Request, response: Response, db: Session = Db):
+    """Create a private workspace for a new user. Demo deployments seed it with the fictional sample projects."""
+    if not settings.open_signup:
+        raise HTTPException(403, 'Sign-up is not open on this deployment.')
+    rate_limit('signup:' + (request.client.host if request.client else 'unknown'), 5)
+    email = body.email.lower().strip()
+    if email == 'demo@example.com' or db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(409, 'An account with this email already exists. Sign in instead.')
+    hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    recent = db.scalar(select(func.count()).select_from(Organization).where(Organization.created_at > hour_ago))
+    total = db.scalar(select(func.count()).select_from(Organization))
+    if recent >= settings.signups_per_hour or total >= settings.max_organizations:
+        raise HTTPException(429, 'Sign-ups are busy right now. Please try again later.')
+    name = body.full_name.strip()
+    org = Organization(name=f"{name.split()[0]}'s workspace")
+    db.add(org)
+    db.flush()
+    user = User(organization_id=org.id, email=email, full_name=name, role='owner', password_hash=hash_password(body.password))
+    db.add(user)
+    try:
+        db.flush()
+        if settings.demo_mode:
+            seed_workspace(db, org)
+        audit(db, user, 'user.signup')
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, 'An account with this email already exists. Sign in instead.')
+    start_session(response, user)
     return public(user)
 
 

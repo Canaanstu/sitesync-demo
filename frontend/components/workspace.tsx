@@ -28,16 +28,16 @@ function Empty({icon,title,detail}:{icon?:React.ReactNode,title:string,detail?:s
 
 export function Workspace() {
   const path=(usePathname()||'/').replace(/(.)\/$/,'$1'), router=useRouter(), cache=useQueryClient();
-  const isLogin=path==='/login';
+  const isSignup=path==='/signup', isLogin=path==='/login'||isSignup;
   const parts=path.split('/').filter(Boolean), projectId=parts[0]==='projects'?parts[1]:undefined;
   const section=parts[2]==='risks'?'overview':parts[2]||'overview';
   const [notice,setNotice]=useState(''), [error,setError]=useState(''), [busy,setBusy]=useState(false);
   const [modal,setModal]=useState<Row|null>(null), [search,setSearch]=useState(''), [severity,setSeverity]=useState('all'), [status,setStatus]=useState('open');
   const [question,setQuestion]=useState(''), [draft,setDraft]=useState(''), [recordTab,setRecordTab]=useState('rfis');
-  const [email,setEmail]=useState(''), [password,setPassword]=useState('');
+  const [email,setEmail]=useState(''), [password,setPassword]=useState(''), [fullName,setFullName]=useState('');
   const [companyId,setCompanyId]=useState(''), [companies,setCompanies]=useState<Row[]>([]), [imports,setImports]=useState<Row[]>([]);
   const health=useQuery({queryKey:['health'],queryFn:()=>api('/health')});
-  useEffect(()=>{if(health.data?.local_auto_login&&isLogin){setEmail('demo@example.com');setPassword('DemoProject2026!')}},[health.data?.local_auto_login,isLogin]);
+  useEffect(()=>{if(health.data?.local_auto_login&&path==='/login'){setEmail('demo@example.com');setPassword('DemoProject2026!')}},[health.data?.local_auto_login,path]);
   const me=useQuery({queryKey:['me'],queryFn:()=>api('/me'),enabled:!isLogin,retry:false});
   const org=useQuery({queryKey:['org'],queryFn:()=>api('/organizations/current'),enabled:!!me.data});
   const projects=useQuery({queryKey:['projects'],queryFn:()=>api<Row[]>('/projects'),enabled:!!me.data,refetchInterval:30000});
@@ -59,7 +59,7 @@ export function Workspace() {
   const queryError=project.error||risks.error||records.error||projects.error;
   useEffect(()=>{setError('');setSearch('');setNotice('');setModal(null)},[path]);
   const modalBehavior=useDialog(modal?modal.type+':'+(modal.title||''):'',()=>setModal(null),busy);
-  useEffect(()=>{const names:Record<string,string>={overview:'Quests',risks:'Quests',schedule:'Schedule',procurement:'Procurement',rfi:'RFIs',agents:'Agents',records:'Project records',documents:'Documents',ai:'Ask Project AI',settings:'Settings'};document.title=isLogin?'Sign in · SiteSync':projectId?`${names[section]||'Project'} · ${project.data?.name?.split('|')[0]||'Project'} · SiteSync`:`${path==='/integrations'?'Integrations':path==='/settings'?'Organization settings':path==='/projects'?'Projects':path==='/tutorial'?'Tutorial':'Overview'} · SiteSync`;},[path,project.data?.name]);
+  useEffect(()=>{const names:Record<string,string>={overview:'Quests',risks:'Quests',schedule:'Schedule',procurement:'Procurement',rfi:'RFIs',agents:'Agents',records:'Project records',documents:'Documents',ai:'Ask Project AI',settings:'Settings'};document.title=isLogin?(isSignup?'Create account · SiteSync':'Sign in · SiteSync'):projectId?`${names[section]||'Project'} · ${project.data?.name?.split('|')[0]||'Project'} · SiteSync`:`${path==='/integrations'?'Integrations':path==='/settings'?'Organization settings':path==='/projects'?'Projects':path==='/tutorial'?'Tutorial':'Overview'} · SiteSync`;},[path,project.data?.name]);
   useEffect(()=>{if(syncState.data?.status==='complete'){for(const key of ['risks','projects','project','records','schedule','ops-board','ops-procurement','ops-agents'])cache.invalidateQueries({queryKey:key==='projects'?['projects']:[key,projectId]});}},[syncState.data?.finished_at]);
 
   async function run(fn:()=>Promise<void>){setBusy(true);setError('');setNotice('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
@@ -75,7 +75,7 @@ export function Workspace() {
   const first=(me.data?.full_name||'').split(' ')[0];
   const dock=[['overview','Quests',Swords],['schedule','Plan',CalendarDays],['procurement','Materials',Package],['rfi','RFIs',MessageCircleQuestion],['agents','Crew',Bot],['more','More',MoreHorizontal]] as const;
 
-  if(isLogin)return <main className="gx login"><Splash/><section className="login-card"><div className="login-logo"><Logo/></div><h1>SiteSync</h1><p className="muted">Sign in to continue.</p><form onSubmit={e=>{e.preventDefault();run(async()=>{await api('/auth/login',{email,password});await cache.invalidateQueries();router.push('/dashboard')})}}><label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete="username"/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="current-password"/></label>{error&&<div role="alert" className="error">{error}</div>}<button className="primary wide big" disabled={busy}>{busy?<><LoaderCircle className="spin" size={18}/>Signing in…</>:<>Let’s go<ArrowRight size={18}/></>}</button></form>{health.data?.local_auto_login&&<p className="hint">Demo workspace · sample data</p>}</section></main>;
+  if(isLogin)return <main className="gx login"><Splash/><section className="login-card"><div className="login-logo"><Logo/></div><h1>SiteSync</h1><p className="muted">{isSignup?'Create your free account.':'Sign in to continue.'}</p><form onSubmit={e=>{e.preventDefault();run(async()=>{await api(isSignup?'/auth/signup':'/auth/login',isSignup?{email,password,full_name:fullName}:{email,password});await cache.invalidateQueries();router.push('/dashboard')})}}>{isSignup&&<label>Your name<input value={fullName} onChange={e=>setFullName(e.target.value)} required minLength={2} maxLength={120} autoComplete="name"/></label>}<label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete={isSignup?'email':'username'}/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required minLength={isSignup?12:undefined} maxLength={72} autoComplete={isSignup?'new-password':'current-password'}/>{isSignup&&<small>At least 12 characters.</small>}</label>{error&&<div role="alert" className="error">{error}</div>}<button className="primary wide big" disabled={busy}>{busy?<><LoaderCircle className="spin" size={18}/>{isSignup?'Creating…':'Signing in…'}</>:<>{isSignup?'Create account':'Let’s go'}<ArrowRight size={18}/></>}</button></form>{isSignup?<p className="hint">Have an account? <Link href="/login">Sign in</Link></p>:health.data?.signup_open&&<p className="hint">New here? <Link href="/signup">Create a free account</Link></p>}{!isSignup&&health.data?.local_auto_login&&<p className="hint">Demo workspace · sample data</p>}{isSignup&&<p className="hint">You get your own private workspace with sample projects. Use fictional or test information only.</p>}</section></main>;
 
   return <div className="gx app"><Splash/>
   <header className="topbar"><Link href="/dashboard" className="brand" aria-label="SiteSync home"><Logo/><span>SiteSync</span></Link>

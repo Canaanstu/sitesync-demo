@@ -9,7 +9,7 @@ export async function generateStaticParams() {
   const sections = ['schedule', 'procurement', 'rfi', 'agents', 'more', 'records', 'documents', 'settings', 'ai', 'risks'];
   return [
     { route: [] }, { route: ['launch'] },
-    ...['login', 'dashboard', 'projects', 'integrations', 'settings', 'tutorial'].map(r => ({ route: [r] })),
+    ...['login', 'signup', 'dashboard', 'projects', 'integrations', 'settings', 'tutorial'].map(r => ({ route: [r] })),
     ...ids.flatMap(id => [{ route: ['projects', id] }, ...sections.map(s => ({ route: ['projects', id, s] }))]),
   ];
 }

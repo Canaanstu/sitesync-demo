@@ -70,6 +70,11 @@ def upgrade_demo(db):
     org=db.get(Organization,user.organization_id)
     org.name='Schimenti Construction Company'
     user.full_name='Schimenti Construction Company'
+    seed_workspace(db,org)
+
+
+def seed_workspace(db,org):
+    """Idempotently give an organization the fictional sample projects (Alo Yoga, Sage and Sound)."""
     projects=list(db.scalars(select(Project).where(Project.organization_id==org.id)))
     for old in projects:
         if old.name=='Harbor House | Procore Demo' and old.external_source=='demo' and old.procore_project_id=='demo-procore-project':
