@@ -565,3 +565,14 @@ html[data-theme=dark] .gx .week-ahead{background:#3f3210;color:#ffd98a}
 .gx .due-legend i.later,.gx .due-bar .later{background:#3a9d6b}
 .gx article.activity.due-over{border-left:5px solid #c0392b;background:var(--paper)}
 .gx article.activity.due-next{border-left:5px solid #e0a526}
+
+/* per-project cards on the dashboard top view */
+.gx .proj-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:8px}
+.gx .proj-card{display:flex;flex-direction:column;border:1.5px solid var(--line);border-radius:16px;background:var(--paper);overflow:hidden}
+.gx .proj-card-name{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;color:var(--ink);font-size:17px}
+.gx .proj-card-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1.5px solid var(--line);color:var(--ink)}
+.gx .proj-card-row:hover,.gx .proj-card-name:hover{background:var(--soft)}
+.gx .proj-card-row span{flex:1;min-width:0}
+.gx .proj-card-row small{display:block;color:var(--muted)}
+.gx .proj-card-row svg{color:var(--accent);flex:none}
+.gx .proj-card-row i{font-style:normal;font-size:12px;font-weight:800;min-width:22px;padding:1px 7px;border-radius:999px;background:#c0392b;color:#fff;text-align:center}

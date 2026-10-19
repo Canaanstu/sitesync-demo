@@ -85,14 +85,33 @@ function Procurement({ops}:{ops:ReturnType<typeof useOps>}){
   </div></>;
 }
 
+const dayCount=(d:string|undefined,asOf:string)=>d?Math.round((Date.parse(d.slice(0,10)+'T12:00:00')-Date.parse(asOf+'T12:00:00'))/864e5):null;
+// One card per project with its own schedule and procurement, straight from the top view.
+function ProjectCards({ops}:{ops:ReturnType<typeof useOps>}){
+ const asOf=iso(new Date());
+ return <><div className="section-title"><h2>Your projects</h2></div><div className="proj-cards">{ops.map(({project,board,proc})=>{
+  const due=(board?.activities||[]).filter((a:Row)=>a.work_status!=='complete').map((a:Row)=>dayCount(a.raw_json?.due_date||a.finish_date,asOf)),over=due.filter((n:number|null)=>n!=null&&n<0).length,week=due.filter((n:number|null)=>n!=null&&n>=0&&n<=7).length;
+  const items=(proc?.items||[]).filter((x:Row)=>x.status!=='delivered'),late=items.filter((x:Row)=>x.late).length,coming=items.filter((x:Row)=>{const n=dayCount(x.expected_delivery_date,asOf);return n!=null&&n>=0&&n<=7}).length;
+  return <article className="proj-card" key={project.id}><Link className="proj-card-name" href={`/projects/${project.id}`}><b>{short(project.name)}</b><ChevronRight size={16}/></Link>
+   <Link className="proj-card-row" href={`/projects/${project.id}/schedule`}><CalendarDays size={18}/><span><b>Schedule</b><small>{board?`${over} overdue · ${week} due this week`:'Loading…'}</small></span>{over>0&&<i className="bad">{over}</i>}</Link>
+   <Link className="proj-card-row" href={`/projects/${project.id}/procurement`}><Package size={18}/><span><b>Procurement</b><small>{proc?`${late} late · ${coming} arriving this week`:'Loading…'}</small></span>{late>0&&<i className="bad">{late}</i>}</Link>
+  </article>})}</div></>;
+}
+
+// Narrow the company-wide Schedule and Procurement tabs to one project.
+function ProjectFilter({projects,value,onChange}:{projects:Row[],value:string,onChange:(v:string)=>void}){
+ if(projects.length<2)return null;
+ return <div className="filter-row" role="group" aria-label="Project">{[['all','All projects'],...projects.map(p=>[p.id,short(p.name)])].map(([k,l])=><button key={k} className={value===k?'active':''} aria-pressed={value===k} onClick={()=>onChange(k)}>{l}</button>)}</div>;
+}
+
 const TABS=[['home','Overview',Home],['schedule','Schedule',CalendarDays],['procurement','Procurement',Package]] as const;
 export function Dashboard({projects,name,company}:{projects:Row[],name?:string,company?:string}){
- const [tab,setTab]=useState<string>('home'),ops=useOps(projects);
+ const [tab,setTab]=useState<string>('home'),[only,setOnly]=useState('all'),all=useOps(projects),ops=only==='all'?all:all.filter(o=>o.project.id===only);
  return <div className="dash"><ProjectList projects={projects}/>
   <div className="dash-main">
    <div className="tabs" role="tablist" aria-label="Dashboard">{TABS.map(([k,label,Icon])=><button key={k} role="tab" aria-selected={tab===k} className={tab===k?'active':''} onClick={()=>setTab(k)}><Icon size={16}/>{label}</button>)}</div>
-   {tab==='home'&&<DailyOverview projects={projects} name={name} company={company}/>}
-   {tab==='schedule'&&<><h1>Schedule</h1><CompanyCalendar ops={ops}/></>}
-   {tab==='procurement'&&<><h1>Procurement</h1><Procurement ops={ops}/></>}
+   {tab==='home'&&<DailyOverview projects={projects} name={name} company={company} slot={<ProjectCards ops={all}/>}/>}
+   {tab==='schedule'&&<><h1>Schedule</h1><ProjectFilter projects={projects} value={only} onChange={setOnly}/><CompanyCalendar ops={ops}/></>}
+   {tab==='procurement'&&<><h1>Procurement</h1><ProjectFilter projects={projects} value={only} onChange={setOnly}/><Procurement ops={ops}/></>}
   </div></div>;
 }

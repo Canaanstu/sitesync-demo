@@ -71,7 +71,7 @@ function useJumps(projects:Row[]):Jump[]{
  return jumps.sort((a,b)=>b.weight-a.weight).slice(0,8);
 }
 
-export function DailyOverview({projects,name,company}:{projects:Row[],name?:string,company?:string}){
+export function DailyOverview({projects,name,company,slot}:{projects:Row[],name?:string,company?:string,slot?:ReactNode}){
  const total=projects.reduce((n,p)=>n+p.risk_count,0),high=projects.reduce((n,p)=>n+p.high_risks,0);
  const jumps=useJumps(projects);
  return <>
@@ -81,6 +81,7 @@ export function DailyOverview({projects,name,company}:{projects:Row[],name?:stri
      <p className="hero-sub">{total?<><b>{total}</b> to tackle{high>0&&<> · <b>{high}</b> high priority</>}</>:'Nothing waiting.'}</p></div>
    </section>
   </div>
+  {slot}
   {jumps.length>0&&<><div className="section-title"><h2>Jump to</h2></div>
    <div className="jumps">{jumps.map(j=><Link key={j.key} href={j.href} className="jump"><span className="row-icon">{j.icon}</span><span className="row-main"><b>{j.title}</b><small>{j.sub}</small></span>{j.count!=null&&<span className="chip prio high">{j.count}</span>}<ArrowRight size={16}/></Link>)}</div></>}
  </>;
