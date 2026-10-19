@@ -198,7 +198,11 @@
 .gx .loading{display:grid;place-items:center;padding:80px}
 .gx .error{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:12px;background:var(--blue-soft);color:var(--accent-d);border:1.5px solid var(--accent-d);font-weight:600;margin:12px 0}
 .gx .error button{border-color:transparent;background:transparent;color:inherit}
-.gx .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:100px;z-index:60;display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:999px;background:var(--ink);color:#fff;font-weight:700;font-size:14px}
+.gx .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:100px;z-index:60;display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:999px;background:var(--ink);color:#fff;font-weight:700;font-size:14px;animation:toast-life 4s both;pointer-events:none}
+@keyframes toast-life{0%{opacity:0;transform:translate(-50%,12px)}8%{opacity:1;transform:translate(-50%,0)}82%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-8px)}}
+.gx .notice-fade{animation:note-life 5s both}
+@keyframes note-life{0%{opacity:0}6%{opacity:1}85%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.gx .toast,.gx .notice-fade{animation:none}}
 .gx .spin{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -442,3 +446,12 @@
 .gx .invite-box{display:flex;flex-direction:column;gap:8px;margin:12px 0}
 .gx .invite-box input{font-family:ui-monospace,monospace;font-size:18px;letter-spacing:.08em}
 @media (max-width:640px){.gx .org-pill{display:none}}
+
+.gx .invite-mail{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.gx .invite-mail label{flex:1 1 220px}
+.gx .guide{display:grid;gap:12px;margin:20px 0}
+.gx .guide-item{display:flex;gap:14px;padding:16px;border-radius:16px;background:var(--soft)}
+.gx .guide-item h3{margin:0 0 4px;font-size:16px}
+.gx .guide-item p{margin:0;color:var(--muted,#4a6577);font-size:14px;line-height:1.5}
+.gx .guide-item .row-icon{flex:none}
+.gx .role-list{display:grid;gap:6px;margin-top:8px;padding:0;list-style:none;font-size:14px}

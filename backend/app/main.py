@@ -181,6 +181,10 @@ class Signup(BaseModel):
     invite_code: str = Field(default='', max_length=40)
 
 
+class InviteEmail(BaseModel):
+    email: str = Field(max_length=254, pattern=r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+
 class JoinRequest(BaseModel):
     invite_code: str = Field(min_length=4, max_length=40)
     password: str = Field(max_length=72)
@@ -378,6 +382,34 @@ def rotate_invite_code(db: Session = Db, user=Auth):
     audit(db, user, 'organization.rotate_invite')
     db.commit()
     return {**public(org), 'invite_code': org.invite_code}
+
+
+@app.post('/api/organizations/invites')
+def invite_by_email(body: InviteEmail, db: Session = Db, user=Auth):
+    """Email a teammate a link to join this company. The link works for people who already have an account and for new ones,
+    and the answer is the same either way so it cannot be used to find out who has an account."""
+    require_admin(user)
+    if not mail_enabled():
+        raise HTTPException(503, 'Email is not set up on this deployment. Copy the invite link instead.')
+    rate_limit('invite:' + user.organization_id, 20, 3600)
+    email = body.email.lower().strip()
+    existing = db.scalar(select(User).where(User.email == email))
+    if existing and existing.organization_id == user.organization_id:
+        raise HTTPException(409, 'That person is already in your company.')
+    org = db.get(Organization, user.organization_id)
+    code = invite_code_for(db, org)
+    db.commit()
+    where = '/settings?invite=' if existing else '/signup?invite='
+    link = f'{settings.app_url}{where}{code}'
+    steps = ('Sign in, open Settings and choose "Join an existing company". Your current workspace is replaced by the company workspace.' if existing
+             else 'Create your account with this link and you will land in the company workspace with its projects and tasks.')
+    sent = send_email(email, f'{user.full_name or "A teammate"} invited you to {org.name} on SiteSync',
+                      f'Hi,\n\n{user.full_name or "A teammate"} invited you to join {org.name} on SiteSync, where the crew shares projects, quests and schedules.\n\n{steps}\n\n{link}\n\nIf you were not expecting this, ignore this message.')
+    if not sent:
+        raise HTTPException(502, 'The invitation email could not be sent. Try again in a moment, or copy the invite link instead.')
+    audit(db, user, 'organization.invite', {'email_domain': email.split('@')[-1]})
+    db.commit()
+    return {'ok': True}
 
 
 @app.post('/api/organizations/join')

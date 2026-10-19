@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import {useEffect} from 'react';
 import {useQueries} from '@tanstack/react-query';
-import {ArrowRight,Bot,CalendarDays,Construction,Search,CircleHelp,FileText,Flame,Mail,MessageSquare,Package,Pin,Receipt,Target,ClipboardList,Check,Pointer,PenLine,Trophy} from 'lucide-react';
+import {UserPlus,Users,ShieldCheck,FolderLock,ArrowRight,Bot,CalendarDays,Construction,Search,CircleHelp,FileText,Flame,Mail,MessageSquare,Package,Pin,Receipt,Target,ClipboardList,Check,Pointer,PenLine,Trophy} from 'lucide-react';
 import type {ReactNode} from 'react';
 import {api,Row} from '../lib/api';
 import {Tower} from './tower';
@@ -102,7 +102,16 @@ export function ProjectDirectory({projects}:{projects:Row[]}){
  return <><h1>Projects</h1><div className="tiles">{projects.map((p,i)=><ProjectTile key={p.id} p={p} i={i}/>)}</div>{!projects.length&&<div className="empty"><span className="empty-art"><Trophy size={30}/></span><h3>No projects yet</h3></div>}</>;
 }
 
+const CREW_GUIDE:[ReactNode,string,ReactNode][]=[
+ [<Users size={22} key="a"/>,'Your company is your crew','Everyone who joins your company shares its projects, quests, schedules, materials and RFIs. When a teammate clears a quest, it is cleared for everyone. Your XP and tower stay personal.'],
+ [<UserPlus size={22} key="b"/>,'Invite a teammate by email','Open Settings, then Company, enter their email and choose Send invite. New people get a link that creates their account inside your company. People who already have an account get a link that opens the join dialog after they sign in. You can also copy the invite link or code and send it yourself.'],
+ [<ShieldCheck size={22} key="c"/>,'Roles',<ul className="role-list" key="c2"><li><b>Owner</b> · full control, can add administrators.</li><li><b>Admin</b> · invites people, manages project access and settings.</li><li><b>Member</b> · works quests, schedules, materials and RFIs.</li><li><b>Viewer</b> · can look but not change anything.</li></ul>],
+ [<FolderLock size={22} key="d"/>,'Joining from an existing account','Someone who already has an account joins from Settings with the company code. This only works while they are alone in their own workspace, and it replaces that workspace (just its sample projects) with the company one. A code that was shared too widely can be replaced with New code, and the old one stops working.'],
+ [<Bot size={22} key="e"/>,'The Crew tab','Inside a project, Crew is your coordinator and inspection researcher. They prepare the next steps from your project records. Nothing is sent to anyone until a person reviews and approves it.'],
+ [<FolderLock size={22} key="f"/>,'Project access','New teammates see every company project. An admin can take someone off a single project in that project’s Settings, under Access.'],
+];
+
 export function Tutorial(){
  const steps:[ReactNode,string,string][]=[[<Pointer size={26} key="a"/>,'Pick a quest','Open a project. Tap a card.'],[<PenLine size={26} key="b"/>,'Review the draft','Edit it. Nothing sends without you.'],[<Trophy size={26} key="c"/>,'Clear it','Earn XP. Keep your streak.']];
- return <><h1>How it works</h1><div className="steps">{steps.map(([e,t,d],i)=><div className="step" key={String(t)}><span className="step-n">{i+1}</span><span className="step-emoji">{e}</span><b>{t}</b><small>{d}</small></div>)}</div><Link className="btn primary" href="/dashboard">Let’s go <ArrowRight size={18}/></Link></>;
+ return <><h1>How it works</h1><div className="steps">{steps.map(([e,t,d],i)=><div className="step" key={String(t)}><span className="step-n">{i+1}</span><span className="step-emoji">{e}</span><b>{t}</b><small>{d}</small></div>)}</div><h2 id="crew">Working with your crew</h2><div className="guide">{CREW_GUIDE.map(([icon,title,body],i)=><div className="guide-item" key={i}><span className="row-icon">{icon}</span><div><h3>{title}</h3>{typeof body==='string'?<p>{body}</p>:body}</div></div>)}</div><Link className="btn primary" href="/dashboard">Let’s go <ArrowRight size={18}/></Link></>;
 }

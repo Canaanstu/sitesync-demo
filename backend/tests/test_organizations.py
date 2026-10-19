@@ -102,3 +102,31 @@ def test_viewers_cannot_clear_tasks_and_members_added_by_admin_see_projects():
             assert pid in {p['id'] for p in v.get('/api/projects').json()}
             risk = v.get(f'/api/projects/{pid}/risks').json()[0]
             assert v.post(f'/api/projects/{pid}/risks/{risk["id"]}/resolve', json={}).status_code == 403
+
+
+def test_invite_by_email_for_new_and_existing_people(monkeypatch):
+    from app import main as app_main
+    sent = []
+    monkeypatch.setattr(app_main, 'send_email', lambda to, subject, text: sent.append((to, subject, text)) or True)
+    with TestClient(app) as owner, TestClient(app) as member:
+        signup(owner, 'inviter@co.test', 'Inviting Owner', company='Invite Co')
+        # email is off on this deployment until a provider is configured
+        assert owner.post('/api/organizations/invites', json={'email': 'new@co.test'}).status_code == 503
+        monkeypatch.setattr(settings, 'resend_api_key', 'k')
+        monkeypatch.setattr(settings, 'mail_from', 'SiteSync <no-reply@example.com>')
+        signup(member, 'existing@elsewhere.test', 'Elsewhere Person')
+        code = owner.get('/api/organizations/current').json()['invite_code']
+        assert owner.post('/api/organizations/invites', json={'email': 'new@co.test'}).json() == {'ok': True}
+        assert owner.post('/api/organizations/invites', json={'email': 'existing@elsewhere.test'}).json() == {'ok': True}
+        (to_new, subject, text_new), (to_old, _, text_old) = [m for m in sent if 'invited you' in m[1]]
+        assert to_new == 'new@co.test' and 'Invite Co' in subject and f'/signup?invite={code}' in text_new
+        assert to_old == 'existing@elsewhere.test' and f'/settings?invite={code}' in text_old
+        assert owner.post('/api/organizations/invites', json={'email': 'inviter@co.test'}).status_code == 409
+        assert owner.post('/api/organizations/invites', json={'email': 'bad'}).status_code == 422
+        # only administrators can invite
+        assert member.post('/api/organizations/invites', json={'email': 'x@y.test'}).status_code in (200, 403)
+        with TestClient(app) as plain:
+            signup(plain, 'plain@co.test', invite_code=code)
+            assert plain.post('/api/organizations/invites', json={'email': 'x@y.test'}).status_code == 403
+        monkeypatch.setattr(app_main, 'send_email', lambda *a: False)
+        assert owner.post('/api/organizations/invites', json={'email': 'fail@co.test'}).status_code == 502

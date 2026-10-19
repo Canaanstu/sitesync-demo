@@ -15,7 +15,11 @@ export async function api<T = Row>(path:string, body?:unknown, method?:string):P
   try { data = raw ? JSON.parse(raw) : {}; }
   catch { throw new Error(response.ok ? 'The server returned an unreadable response. Please retry.' : 'SiteSync could not reach the server. Please retry in a moment.'); }
   if(!response.ok) {
-    if(response.status===401 && !path.includes('/auth/login') && typeof window!=='undefined') window.location.href=(process.env.NEXT_PUBLIC_BASE_PATH||'')+'/login/';
+    if(response.status===401 && !path.includes('/auth/login') && typeof window!=='undefined'){
+      // Remember where the person was heading (an emailed invite link, for example) so sign-in can return them there.
+      try{if(!/^\/(login|signup|forgot|reset|verify)/.test(location.pathname))sessionStorage.setItem('sitesync:next',location.pathname+location.search)}catch{}
+      window.location.href=(process.env.NEXT_PUBLIC_BASE_PATH||'')+'/login/';
+    }
     const detail=Array.isArray(data.detail)?data.detail.map((e:Row)=>String(e.msg||'Invalid input').replace(/^Value error, /,'')).join(' '):data.detail;
     throw new Error(typeof detail==='string'?detail:'Please check your input and try again.');
   }
