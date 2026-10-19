@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {Flame,Star,X} from 'lucide-react';
 import {useGame} from '../lib/game';
 import {Tower,buildingFor,FLOOR_XP} from './tower';
@@ -21,7 +22,7 @@ export function GameBar(){
   <span className="chip streak" title="Day streak"><Flame size={16}/>{g.streak}</span>
   <button className="chip level" title="See your building" aria-haspopup="dialog" onClick={()=>setOpen(true)}><Star size={16}/>Lv {g.level}<i><b style={{width:g.levelProgress*100+'%'}}/></i></button>
  </div>
- {open&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setOpen(false)}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="tower-title"><div className="modal-heading"><h2 id="tower-title">Your building</h2><button aria-label="Close" onClick={()=>setOpen(false)}><X size={20}/></button></div><p className="muted">Finish quests to earn XP. Every {FLOOR_XP} XP adds a floor. You have {g.xp} XP.</p><Tower/></section></div>}</>;
+ {open&&createPortal(<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setOpen(false)}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="tower-title"><div className="modal-heading"><h2 id="tower-title">Your building</h2><button aria-label="Close" onClick={()=>setOpen(false)}><X size={20}/></button></div><p className="muted">Finish quests to earn XP. Every {FLOOR_XP} XP adds a floor. You have {g.xp} XP.</p><Tower/></section></div>,document.querySelector('.gx')||document.body)}</>;
 }
 
 // Shows the tower for a few seconds after a reward and lets the new floor drop in, so finishing a task visibly builds it.
