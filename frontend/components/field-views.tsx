@@ -44,6 +44,19 @@ export function dueChip(due:string|undefined,asOf:string,done=false){
  if(days==null||days>7)return null;
  return {text:days<0?`Overdue ${-days}d`:days===0?'Due today':days===1?'Due tomorrow':`Due in ${days} days`,late:days<0};
 }
+// Procore-style overview: for each kind of work, how much is overdue, due in the next 7 days, or later.
+export type Bucket={label:string,dates:(string|undefined)[]};
+export function DueOverview({asOf,rows}:{asOf:string,rows:Bucket[]}){
+ const data=rows.map(r=>{const d=r.dates.filter(Boolean).map(x=>daysBetween(x,asOf) as number);return {label:r.label,over:d.filter(n=>n<0).length,soon:d.filter(n=>n>=0&&n<=7).length,later:d.filter(n=>n>7).length}}).filter(r=>r.over+r.soon+r.later>0);
+ if(!data.length)return null;
+ const max=Math.max(...data.map(r=>r.over+r.soon+r.later));
+ return <section className="due-overview" aria-label="What is due">
+  <div className="due-legend"><span><i className="over"/>Overdue</span><span><i className="soon"/>Next 7 days</span><span><i className="later"/>Later</span></div>
+  {data.map(r=>{const total=r.over+r.soon+r.later;return <div className="due-row" key={r.label}><b>{r.label}</b>
+   <div className="due-bar" style={{width:Math.max(18,total/max*100)+'%'}} role="img" aria-label={`${r.label}: ${r.over} overdue, ${r.soon} due in the next 7 days, ${r.later} later`}>{[['over',r.over],['soon',r.soon],['later',r.later]].map(([k,n])=>Number(n)>0&&<span key={k as string} className={k as string} style={{flexGrow:Number(n)}}>{n}</span>)}</div>
+   <small>{total}</small></div>})}
+ </section>;
+}
 const STATUS_LABEL:[string,string][]=[['all','Any status'],['upcoming','Not started'],['today','In progress'],['blocked','Blocked'],['overdue','Overdue'],['complete','Complete']];
 const WEEKS=[2,3,4,6];
 
@@ -65,10 +78,11 @@ export function ScheduleView({board,items,risks,canEdit,busy,open,onProgress,war
  const weekOf=(a:Row)=>Math.min(weeks-1,Math.max(0,Math.floor((daysBetween(a.start_date||asOf,asOf)||0)/7)));
  const variance=board.variance_days,tone=variance==null?'':variance>0?'bad':'good';
  const soon=warnings.filter(w=>w.days<=7);
+ const overview:Bucket[]=[{label:'Work',dates:activities.filter(a=>a.work_status!=='complete').map(dueOf)},{label:'Inspections',dates:(board.inspections||[]).filter((i:Row)=>!['passed','failed'].includes(i.status)).map((i:Row)=>i.data.scheduled_date)},{label:'Deliveries',dates:items.filter(i=>i.status!=='delivered').map(i=>i.expected_delivery_date)},{label:'Tasks',dates:risks.filter(r=>['open','in_progress'].includes(r.status)).map(r=>r.due_date)}];
  const filterActive=q||trade!=='all'||status!=='all';
  const activityRow=(a:Row)=>{
   const signals=activitySignals(a,items,risks),pct=a.percent_complete||0,auto=['inspection','delivery'].includes(a.raw_json?.progress_source?.kind),blocked=signals.length>0,days=workdays(a.start_date,a.finish_date),chip=dueChip(dueOf(a),asOf,a.work_status==='complete');
-  return <article className={'activity '+(blocked?'blocked':a.work_status==='complete'?'done':'')} key={a.id}>
+  return <article className={'activity '+(blocked?'blocked':a.work_status==='complete'?'done':'')+(chip?(chip.late?' due-over':' due-next'):'')} key={a.id}>
    <button className="activity-main" onClick={()=>open('activity',{...a,signals})}>
     <span className="row-icon">{a.work_status==='complete'?<CheckCircle2 size={20}/>:blocked?<Construction size={20}/>:a.work_status==='today'?<Hammer size={20}/>:<Hourglass size={20}/>}</span>
     <span className="row-main"><b>{a.name}</b><small>{[a.trade,days&&`${days} working day${days>1?'s':''}`,`${dateLabel(a.start_date)} – ${dateLabel(a.finish_date)}`,`due ${dateLabel(dueOf(a))}`].filter(Boolean).join(' · ')}</small>
@@ -83,6 +97,7 @@ export function ScheduleView({board,items,risks,canEdit,busy,open,onProgress,war
  return <>
   <p className={'plan-forecast '+tone}>{variance==null?'No finish forecast yet.':<>Forecast finish <b>{dateLabel(board.forecast_finish)}</b> · {variance>0?`${variance} days late`:variance===0?'on target':`${Math.abs(variance)} days early`}</>}</p>
   {soon.length>0&&<div className="week-warning" role="status"><Siren size={18}/><div><b>{soon.length} {soon.length===1?'item':'items'} due within a week</b><ul>{soon.slice(0,4).map(w=><li key={w.key}>{w.title} · {w.days<0?`overdue ${-w.days}d`:w.days===0?'today':w.days===1?'tomorrow':`in ${w.days} days`}</li>)}{soon.length>4&&<li>and {soon.length-4} more</li>}</ul></div></div>}
+  {['lookahead','calendar'].includes(current)&&<DueOverview asOf={asOf} rows={overview}/>}
   <div className="toolbar">
    <Choices label="Schedule views" value={current} onChange={setView} options={[{value:'all',label:'To do'},{value:'lookahead',label:'Lookahead'},{value:'calendar',label:'Calendar'},{value:'inspections',label:'Inspections'},{value:'complete',label:'Done'}]}/>
    <span className="toolbar-actions"><button aria-label="Project dates" title="Project dates" disabled={!canEdit||busy} onClick={()=>open('profile')}><CalendarDays size={18}/></button><button disabled={!canEdit||busy} onClick={()=>open('plan')}><Sparkles size={18}/>Build</button><button className="primary" disabled={!canEdit||busy} onClick={()=>open('activity-new')}><Plus size={18}/>Task</button></span>

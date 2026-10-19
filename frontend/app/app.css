@@ -548,3 +548,20 @@ html[data-theme=dark] .gx .week-ahead{background:#3f3210;color:#ffd98a}
 .gx .week-ahead li{display:flex;justify-content:space-between;gap:12px}
 .gx .week-ahead li.late small{font-weight:800}
 .gx .ops-modal form>small.muted{display:block;padding-bottom:56px}
+
+/* Procore-style overdue / next 7 days / later bars */
+.gx .due-overview{display:flex;flex-direction:column;gap:8px;padding:14px 16px;margin:0 0 14px;border:1.5px solid var(--line);border-radius:16px;background:var(--paper)}
+.gx .due-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;font-weight:700;color:var(--muted)}
+.gx .due-legend span{display:inline-flex;align-items:center;gap:6px}
+.gx .due-legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.gx .due-row{display:grid;grid-template-columns:96px minmax(0,1fr) 32px;align-items:center;gap:12px}
+.gx .due-row b{font-size:14px}
+.gx .due-row small{text-align:right;font-weight:800}
+.gx .due-bar{display:flex;height:24px;border-radius:4px;overflow:hidden;min-width:0}
+.gx .due-bar span{display:grid;place-items:center;min-width:24px;font-size:12px;font-weight:800;color:#fff}
+.gx .due-legend i.over,.gx .due-bar .over{background:#c0392b}
+.gx .due-legend i.soon,.gx .due-bar .soon{background:#e0a526}
+.gx .due-bar .soon{color:#3d2a00}
+.gx .due-legend i.later,.gx .due-bar .later{background:#3a9d6b}
+.gx article.activity.due-over{border-left:5px solid #c0392b;background:var(--paper)}
+.gx article.activity.due-next{border-left:5px solid #e0a526}

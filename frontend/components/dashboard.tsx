@@ -5,6 +5,7 @@ import {useQueries,useQuery} from '@tanstack/react-query';
 import {CalendarDays,ChevronLeft,ChevronRight,ChevronDown,Home,Package} from 'lucide-react';
 import {api,Row} from '../lib/api';
 import {DailyOverview,levelOf} from './project-hub';
+import {DueOverview} from './field-views';
 
 const iso=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const short=(name:string)=>name.split('|')[0].trim();
@@ -51,11 +52,12 @@ function CompanyCalendar({ops}:{ops:ReturnType<typeof useOps>}){
   (proc?.items||[]).forEach((x:Row)=>{if(x.expected_delivery_date===key&&x.status!=='delivered')out.push({id:x.id,label:x.name,sub:pn+' · delivery',kind:'event-delivery',href:`/projects/${project.id}/procurement`})});
   return out;
  });
- return <section className="panel calendar-panel"><div className="section-heading"><h3 aria-live="polite">{month.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</h3><div className="ops-actions"><button aria-label="Previous month" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft/></button><button onClick={()=>setMonth(new Date())}>Today</button><button aria-label="Next month" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight/></button></div></div>
+ const asOf=iso(new Date()),rows=[{label:'Work',dates:ops.flatMap(o=>(o.board?.activities||[]).filter((a:Row)=>a.work_status!=='complete').map((a:Row)=>a.raw_json?.due_date||a.finish_date))},{label:'Inspections',dates:ops.flatMap(o=>(o.board?.inspections||[]).filter((i:Row)=>!['passed','failed'].includes(i.status)).map((i:Row)=>i.data.scheduled_date))},{label:'Deliveries',dates:ops.flatMap(o=>(o.proc?.items||[]).filter((x:Row)=>x.status!=='delivered').map((x:Row)=>x.expected_delivery_date))}];
+ return <><DueOverview asOf={asOf} rows={rows}/><section className="panel calendar-panel"><div className="section-heading"><h3 aria-live="polite">{month.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</h3><div className="ops-actions"><button aria-label="Previous month" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft/></button><button onClick={()=>setMonth(new Date())}>Today</button><button aria-label="Next month" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight/></button></div></div>
   <div className="schedule-calendar-scroll"><div className="schedule-calendar" aria-label="All projects calendar">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=><b className="calendar-weekday" key={d}>{d}</b>)}
    {dates.map(d=>{const key=iso(d);return <div className={'calendar-day '+(d.getMonth()!==month.getMonth()?'outside-month ':'')+(key===today?'calendar-today':'')} key={key}><time dateTime={key}>{d.getDate()}</time>{due.filter(w=>w.due===key).length>0&&<span className="due-flag" title={due.filter(w=>w.due===key).map(w=>w.project_name+': '+w.title).join('\n')}>{due.filter(w=>w.due===key).length} due</span>}
     {events(key).map(e=><Link key={e.id+key} href={e.href} className={'calendar-event '+e.kind}>{e.label}<small>{e.sub}</small></Link>)}</div>})}
-  </div></div></section>;
+  </div></div></section></>;
 }
 
 // Every purchase and delivery across projects, late ones first. Shipments (packages) supply the tracked ETA when there is one.
