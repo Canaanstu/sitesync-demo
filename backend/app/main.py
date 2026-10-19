@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import hashlib
+import secrets
 import threading
 import json
 from pathlib import Path
@@ -35,6 +36,10 @@ def add_missing_columns():
     if 'email_verified' not in {c['name'] for c in inspect(engine).get_columns('users')}:
         with engine.begin() as conn:
             conn.execute(text('ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT TRUE'))
+    if 'invite_code' not in {c['name'] for c in inspect(engine).get_columns('organizations')}:
+        with engine.begin() as conn:
+            conn.execute(text('ALTER TABLE organizations ADD COLUMN invite_code VARCHAR'))
+            conn.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ix_organizations_invite_code ON organizations (invite_code)'))
 
 
 _ready = False
@@ -112,6 +117,34 @@ def audit(db, user, action, detail=None):
     db.add(Audit(organization_id=user.organization_id, user_id=user.id, action=action, detail=detail or {}))
 
 
+def new_invite_code():
+    raw = secrets.token_hex(5).upper()
+    return raw[:5] + '-' + raw[5:]
+
+
+def clean_code(value):
+    return ''.join(value.split()).upper()
+
+
+def invite_code_for(db, org):
+    """Organizations created before invite codes existed get one the first time an admin asks."""
+    if not org.invite_code:
+        org.invite_code = new_invite_code()
+        db.flush()
+    return org.invite_code
+
+
+def grant_projects(db, org_id, member_id=None, project_id=None):
+    """Members only see projects they are granted. Everyone in a company shares its projects, so grant them automatically
+    (an admin can still revoke one in project settings)."""
+    member_ids = [member_id] if member_id else list(db.scalars(select(User.id).where(User.organization_id == org_id, User.role.not_in(['owner', 'admin']))))
+    project_ids = [project_id] if project_id else list(db.scalars(select(Project.id).where(Project.organization_id == org_id)))
+    for m in member_ids:
+        for p in project_ids:
+            if not db.get(ProjectMember, (p, m)):
+                db.add(ProjectMember(project_id=p, user_id=m))
+
+
 class Login(BaseModel):
     email: str = Field(max_length=254)
     password: str = Field(max_length=72)
@@ -144,6 +177,13 @@ class Signup(BaseModel):
     email: str = Field(max_length=254, pattern=r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
     full_name: str = Field(min_length=2, max_length=120)
     password: str = Field(min_length=12, max_length=72)
+    company: str = Field(default='', max_length=160)
+    invite_code: str = Field(default='', max_length=40)
+
+
+class JoinRequest(BaseModel):
+    invite_code: str = Field(min_length=4, max_length=40)
+    password: str = Field(max_length=72)
 
 
 class EmailOnly(BaseModel):
@@ -204,21 +244,30 @@ def signup(body: Signup, request: Request, response: Response, db: Session = Db)
     if email == 'demo@example.com' or db.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, 'An account with this email already exists. Sign in instead.')
     hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-    recent = db.scalar(select(func.count()).select_from(Organization).where(Organization.created_at > hour_ago))
-    total = db.scalar(select(func.count()).select_from(Organization))
-    if recent >= settings.signups_per_hour or total >= settings.max_organizations:
-        raise HTTPException(429, 'Sign-ups are busy right now. Please try again later.')
     name = body.full_name.strip()
-    org = Organization(name=f"{name.split()[0]}'s workspace")
-    db.add(org)
-    db.flush()
-    user = User(organization_id=org.id, email=email, full_name=name, role='owner', password_hash=hash_password(body.password), email_verified=not mail_enabled())
+    code = clean_code(body.invite_code)
+    joined = db.scalar(select(Organization).where(Organization.invite_code == code)) if code else None
+    if code and not joined:
+        raise HTTPException(404, 'That invite code was not found. Ask your administrator for a current one.')
+    if joined:
+        org = joined
+    else:
+        recent = db.scalar(select(func.count()).select_from(Organization).where(Organization.created_at > hour_ago))
+        total = db.scalar(select(func.count()).select_from(Organization))
+        if recent >= settings.signups_per_hour or total >= settings.max_organizations:
+            raise HTTPException(429, 'Sign-ups are busy right now. Please try again later.')
+        org = Organization(name=body.company.strip() or f"{name.split()[0]}'s workspace", invite_code=new_invite_code())
+        db.add(org)
+        db.flush()
+    user = User(organization_id=org.id, email=email, full_name=name, role='member' if joined else 'owner', password_hash=hash_password(body.password), email_verified=not mail_enabled())
     db.add(user)
     try:
         db.flush()
-        if settings.demo_mode:
+        if joined:
+            grant_projects(db, org.id, member_id=user.id)
+        elif settings.demo_mode:
             seed_workspace(db, org)
-        audit(db, user, 'user.signup')
+        audit(db, user, 'user.join_organization' if joined else 'user.signup')
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -305,13 +354,54 @@ def logout(response: Response):
 
 
 @app.get('/api/me')
-def me(user=Auth):
-    return {**public(user), 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo}
+def me(db: Session = Db, user=Auth):
+    org = db.get(Organization, user.organization_id)
+    return {**public(user), 'organization_name': org.name if org else '', 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo}
 
 
 @app.get('/api/organizations/current')
 def organization(db: Session = Db, user=Auth):
-    return public(db.get(Organization, user.organization_id))
+    org = db.get(Organization, user.organization_id)
+    result = public(org)
+    if user.role in ('owner', 'admin'):
+        result['invite_code'] = invite_code_for(db, org)
+        db.commit()
+    return result
+
+
+@app.post('/api/organizations/invite-code')
+def rotate_invite_code(db: Session = Db, user=Auth):
+    """Replace the company invite code, so a code that was shared too widely stops working."""
+    require_admin(user)
+    org = db.get(Organization, user.organization_id)
+    org.invite_code = new_invite_code()
+    audit(db, user, 'organization.rotate_invite')
+    db.commit()
+    return {**public(org), 'invite_code': org.invite_code}
+
+
+@app.post('/api/organizations/join')
+def join_organization(body: JoinRequest, request: Request, db: Session = Db, user=Auth):
+    """Move a signed-in person who is alone in their own workspace into their company's workspace."""
+    rate_limit('join:' + (request.client.host if request.client else 'unknown'), 10)
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(403, 'Password is incorrect.')
+    target = db.scalar(select(Organization).where(Organization.invite_code == clean_code(body.invite_code)))
+    if not target:
+        raise HTTPException(404, 'That invite code was not found. Ask your administrator for a current one.')
+    if target.id == user.organization_id:
+        raise HTTPException(409, 'You are already in this company.')
+    if user.email == 'demo@example.com' or db.scalar(select(func.count()).select_from(User).where(User.organization_id == user.organization_id)) > 1:
+        raise HTTPException(403, 'Only a person working alone in their own workspace can switch companies.')
+    old_org_id = user.organization_id
+    user.organization_id, user.role = target.id, 'member'
+    db.flush()
+    # The personal workspace they leave behind (sample projects only) is removed so nothing is orphaned.
+    delete_workspace(db, old_org_id)
+    grant_projects(db, target.id, member_id=user.id)
+    audit(db, user, 'user.join_organization')
+    db.commit()
+    return {'ok': True, 'organization_name': target.name}
 
 
 @app.post('/api/organizations')
@@ -339,6 +429,8 @@ def create_member(body: MemberRequest, db: Session = Db, user=Auth):
         raise HTTPException(409, 'This email is already registered.')
     member = User(organization_id=user.organization_id, email=body.email.lower().strip(), full_name=body.full_name, role=body.role, password_hash=hash_password(body.password))
     db.add(member)
+    db.flush()
+    grant_projects(db, user.organization_id, member_id=member.id)
     audit(db, user, 'member.create', {'email': body.email, 'role': body.role})
     db.commit()
     return public(member)
@@ -363,6 +455,8 @@ def create_project(body: Name, db: Session = Db, user=Auth):
     require_admin(user)
     p = Project(organization_id=user.organization_id, name=body.name, settings={})
     db.add(p)
+    db.flush()
+    grant_projects(db, user.organization_id, project_id=p.id)
     db.commit()
     return public(p)
 
@@ -373,6 +467,7 @@ def demo_project(db: Session = Db, user=Auth):
     if not settings.demo_mode:
         raise HTTPException(403, 'Demo project creation is disabled in live mode.')
     p = seed_project(db, user.organization_id)
+    grant_projects(db, user.organization_id, project_id=p.id)
     db.commit()
     return public(p)
 
@@ -527,6 +622,8 @@ def import_project(body: ImportProject, db: Session = Db, user=Auth):
         p.external_source = 'demo' if settings.demo_mode else 'procore'
         p.procore_company_id, p.procore_project_id = body.company_id, body.project_id
         db.add(p)
+        db.flush()
+        grant_projects(db, user.organization_id, project_id=p.id)
         db.commit()
     return public(p)
 

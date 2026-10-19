@@ -128,6 +128,9 @@ def test_tenant_and_project_isolation(client):
     member = client.post('/api/organizations/members', json={'email':'viewer@example.com','full_name':'Viewer','password':'ViewerAccess2026!','role':'viewer'}).json()
     with TestClient(app) as viewer:
         viewer.post('/api/auth/login', json={'email':'viewer@example.com','password':'ViewerAccess2026!'})
+        # company members share the company's projects by default; an administrator can revoke one
+        assert viewer.get(f'/api/projects/{pid}').status_code == 200
+        client.delete(f'/api/projects/{pid}/members/{member["id"]}')
         assert viewer.get(f'/api/projects/{pid}').status_code == 404
         client.post(f'/api/projects/{pid}/members/{member["id"]}')
         assert viewer.get(f'/api/projects/{pid}').status_code == 200

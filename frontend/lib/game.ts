@@ -25,7 +25,7 @@ export function award(xp:number,label='Nice work'){
  g.xp+=xp;g.doneToday+=1;
  const before=Math.floor((g.xp-xp)/XP_PER_LEVEL);
  try{localStorage.setItem(KEY,JSON.stringify(g))}catch{}
- window.dispatchEvent(new CustomEvent('sitesync:xp',{detail:{xp,label,game:g,levelUp:Math.floor(g.xp/XP_PER_LEVEL)>before}}));
+ window.dispatchEvent(new CustomEvent('sitesync:xp',{detail:{xp,label,before:g.xp-xp,game:g,levelUp:Math.floor(g.xp/XP_PER_LEVEL)>before}}));
 }
 export function useGame(){
  const [game,setGame]=useState<Game>(fresh());

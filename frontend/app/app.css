@@ -269,7 +269,7 @@
 
 /* celebrate */
 .gx .celebrate{position:fixed;inset:0;pointer-events:none;z-index:90;overflow:hidden}
-.gx .xp-pop{position:absolute;left:50%;top:38%;transform:translateX(-50%);padding:14px 28px;border-radius:999px;background:var(--ink);color:#fff;font-weight:800;font-size:26px;letter-spacing:-.02em;animation:pop 2s both}
+.gx .xp-pop{position:absolute;left:50%;top:12%;transform:translateX(-50%);padding:14px 28px;border-radius:999px;background:var(--ink);color:#fff;font-weight:800;font-size:26px;letter-spacing:-.02em;animation:pop 2s both}
 @keyframes pop{0%{opacity:0;transform:translate(-50%,20px) scale(.8)}15%{opacity:1;transform:translate(-50%,0) scale(1.05)}25%{transform:translate(-50%,0) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-40px)}}
 .gx .confetti{position:absolute;top:-12px;width:8px;height:14px;border-radius:2px;animation:fall 1.8s cubic-bezier(.3,.6,.4,1) both}
 @keyframes fall{to{transform:translateY(105vh) rotate(var(--spin));opacity:.2}}
@@ -345,6 +345,14 @@
 .gx .tower-title{display:flex;align-items:center;gap:8px;font-size:18px}
 .gx .tower-title svg{color:var(--accent)}
 @keyframes tw-in{from{opacity:0}to{opacity:1}}
+/* a freshly built floor drops in from above (margin, not transform, because each face already has a 3D transform) */
+@keyframes tw-drop{0%{margin-top:-150px;opacity:0}60%{opacity:1}100%{margin-top:0;opacity:1}}
+.gx .tw-face.drop{animation:tw-drop .75s cubic-bezier(.3,1.2,.4,1) both}
+.gx .tower-pop{position:absolute;left:50%;top:50%;width:min(300px,86vw);transform:translate(-50%,-50%);animation:tower-pop 3.6s both;filter:drop-shadow(0 20px 44px #0b2a3d66)}
+.gx .tower-pop .tower-card{background:#fff;border:2px solid var(--accent,#1474a2)}
+.gx .tower-built{position:absolute;left:50%;top:-14px;transform:translateX(-50%);padding:6px 16px;border-radius:999px;background:var(--ink);color:#fff;font-size:15px;white-space:nowrap;animation:cap-in .4s both}
+@keyframes cap-in{from{opacity:0;transform:translateX(-50%) scale(.8)}to{opacity:1;transform:translateX(-50%) scale(1)}}
+@keyframes tower-pop{0%{opacity:0;transform:translate(-50%,-44%) scale(.92)}10%,86%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-54%) scale(.98)}}
 .gx .home-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:28px;align-items:center}
 .gx .jumps{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
 .gx .jump{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1.5px solid var(--line);border-radius:16px;background:#fff;color:var(--ink);min-height:68px}
@@ -429,3 +437,8 @@
  .gx .site-band{padding:32px 24px}
 }
 @media (prefers-reduced-motion:reduce){.gx .reveal{opacity:1;transform:none}}
+.gx .org-pill{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 12px;border-radius:999px;background:var(--soft);color:var(--ink);font-size:13px;font-weight:700;text-decoration:none}
+.gx .hero-org{display:block;margin-bottom:4px;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;opacity:.7}
+.gx .invite-box{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.gx .invite-box input{font-family:ui-monospace,monospace;font-size:18px;letter-spacing:.08em}
+@media (max-width:640px){.gx .org-pill{display:none}}

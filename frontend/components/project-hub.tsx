@@ -75,7 +75,7 @@ function useJumps(projects:Row[]):Jump[]{
  return jumps.sort((a,b)=>b.weight-a.weight).slice(0,8);
 }
 
-export function DailyOverview({projects,name}:{projects:Row[],name?:string}){
+export function DailyOverview({projects,name,company}:{projects:Row[],name?:string,company?:string}){
  const g=useGame(),total=projects.reduce((n,p)=>n+p.risk_count,0),high=projects.reduce((n,p)=>n+p.high_risks,0);
  const jumps=useJumps(projects);
  // One small reward per day for opening the app; it also keeps the streak alive.
@@ -83,7 +83,7 @@ export function DailyOverview({projects,name}:{projects:Row[],name?:string}){
  return <>
   <div className="home-grid">
    <section className="hero">
-    <div><h1>{greeting()}{name?`, ${name.split(' ')[0]}`:''}</h1>
+    <div>{company&&<small className="hero-org">{company}</small>}<h1>{greeting()}{name?`, ${name.split(' ')[0]}`:''}</h1>
      <p className="hero-sub">{total?<><b>{total}</b> to tackle{high>0&&<> · <b>{high}</b> high priority</>}</>:'Nothing waiting.'}</p></div>
     <div className="goal"><Target size={20}/><span>Daily goal</span>
      <div className="bar" role="progressbar" aria-label="Daily goal" aria-valuemin={0} aria-valuemax={DAILY_GOAL} aria-valuenow={Math.min(DAILY_GOAL,g.doneToday)}><b style={{width:Math.min(100,g.doneToday/DAILY_GOAL*100)+'%'}}/></div>

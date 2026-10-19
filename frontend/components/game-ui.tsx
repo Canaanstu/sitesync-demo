@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import {Flame,Star} from 'lucide-react';
 import {useGame} from '../lib/game';
+import {Tower,buildingFor} from './tower';
 
 const COLORS=['#1474a2','#0b3f5e','#0b2a3d','#8fc1db','#1474a2'];
 
@@ -21,17 +22,37 @@ export function GameBar(){
  </div>;
 }
 
+// Shows the tower for a few seconds after a reward and lets the new floor drop in, so finishing a task visibly builds it.
+// When a reward finishes a building, it is shown complete and then replaced by the next, more complicated one.
+export const BUILD_MS=3600,FINISH_MS=6600;
+function TowerBuild({before,after}:{before:number,after:number}){
+ const from=buildingFor(before),to=buildingFor(after),finished=to.level>from.level;
+ const [view,setView]=useState<{level:number,floors:number}>({level:from.level,floors:from.floors}),[caption,setCaption]=useState('');
+ useEffect(()=>{
+  const timers:ReturnType<typeof setTimeout>[]=[];
+  if(finished){
+   timers.push(setTimeout(()=>{setView({level:from.level,floors:from.size});setCaption(`${from.name} complete`)},450));
+   timers.push(setTimeout(()=>{setView({level:to.level,floors:to.floors});setCaption(`New building: ${to.name}`)},3200));
+  }else{
+   timers.push(setTimeout(()=>{setView({level:to.level,floors:to.floors});if(to.floors>from.floors)setCaption(`Floor ${to.floors} built`)},450));
+  }
+  return()=>timers.forEach(clearTimeout);
+ },[]);
+ return <div className="tower-pop" style={{animationDuration:(finished?FINISH_MS:BUILD_MS)+'ms'}} aria-hidden="true"><Tower view={view} compact/>{caption&&<b className="tower-built">{caption}</b>}</div>;
+}
+
 type Pop={id:number,text:string,levelUp:boolean};
 export function Celebrations(){
- const [pops,setPops]=useState<Pop[]>([]),[bits,setBits]=useState<{id:number,x:number,c:string,d:number,r:number}[]>([]);
+ const [pops,setPops]=useState<Pop[]>([]),[bits,setBits]=useState<{id:number,x:number,c:string,d:number,r:number}[]>([]),[build,setBuild]=useState<{id:number,before:number,after:number}|null>(null);
  useEffect(()=>{
   const on=(e:Event)=>{
    const d=(e as CustomEvent).detail,id=Date.now()+Math.random();
    setPops(p=>[...p,{id,text:`+${d.xp} XP`,levelUp:d.levelUp}]);
+   if(d.label!=='Daily check-in'){setBuild({id,before:d.before,after:d.game.xp});setTimeout(()=>setBuild(b=>b?.id===id?null:b),buildingFor(d.game.xp).level>buildingFor(d.before).level?FINISH_MS:BUILD_MS)}
    if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches)setBits(b=>[...b,...Array.from({length:d.levelUp?44:22},(_,i)=>({id:id+i/100,x:Math.random()*100,c:COLORS[i%5],d:Math.random()*.3,r:Math.random()*720-360}))]);
    setTimeout(()=>{setPops(p=>p.filter(x=>x.id!==id));setBits(b=>b.filter(x=>Math.floor(x.id)!==Math.floor(id)))},2200);
   };
   window.addEventListener('sitesync:xp',on);return()=>window.removeEventListener('sitesync:xp',on);
  },[]);
- return <div className="celebrate" aria-live="polite">{bits.map(b=><i key={b.id} className="confetti" style={{left:b.x+'%',background:b.c,animationDelay:b.d+'s','--spin':b.r+'deg'} as React.CSSProperties}/>)}{pops.map(p=><div key={p.id} className="xp-pop">{p.levelUp?'Level up':p.text}</div>)}</div>;
+ return <div className="celebrate" aria-live="polite">{build&&<TowerBuild key={build.id} before={build.before} after={build.after}/>}{bits.map(b=><i key={b.id} className="confetti" style={{left:b.x+'%',background:b.c,animationDelay:b.d+'s','--spin':b.r+'deg'} as React.CSSProperties}/>)}{pops.map(p=><div key={p.id} className="xp-pop">{p.levelUp?'Level up':p.text}</div>)}</div>;
 }

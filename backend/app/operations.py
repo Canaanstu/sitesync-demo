@@ -197,7 +197,7 @@ def apply_plan(project_id: str, plan_id: str, body: ApplyPlan, db: Session=Db,us
 
 
 class Progress(BaseModel):
-    percent_complete: int = Field(ge=0,le=100)
+    percent_complete: float = Field(ge=0,le=100)
 
 
 @router.patch('/activities/{activity_id}')

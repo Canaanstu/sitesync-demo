@@ -21,6 +21,8 @@ class Identity:
 class Organization(Identity, Base):
     __tablename__ = 'organizations'
     name = Column(String, nullable=False)
+    # Shared with teammates so they can join this company at sign-up. Only owners and admins can read it.
+    invite_code = Column(String, unique=True)
 
 
 class LaunchRequest(Identity, Base):
@@ -216,4 +218,4 @@ RECORDS = {'rfis': RFI, 'submittals': Submittal, 'procurement': Procurement, 'sc
 
 
 def public(row):
-    return {c.name: getattr(row, c.name) for c in row.__table__.columns if c.name not in ('password_hash', 'access_token_encrypted', 'refresh_token_encrypted')}
+    return {c.name: getattr(row, c.name) for c in row.__table__.columns if c.name not in ('password_hash', 'access_token_encrypted', 'refresh_token_encrypted', 'invite_code')}
