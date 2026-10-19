@@ -347,6 +347,8 @@
  .gx .dock a{min-width:56px;padding:8px 10px}
  .gx .chat-scroll{max-height:calc(100vh - 340px)}
  .gx .chat-msg{max-width:92%}
+ .gx .chat-compose{padding-right:64px}
+ .gx .mention-list{left:0}
  .gx .tiles.two{grid-template-columns:1fr}
  .gx .assistant-launch{bottom:92px;right:14px}
  .gx .modal-backdrop{place-items:end center;padding:0}
