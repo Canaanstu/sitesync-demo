@@ -35,21 +35,16 @@ export function ScheduleView({board,items,risks,canEdit,busy,open,onProgress}:{b
  const activities:Row[]=board.activities||[];
  useEffect(()=>{
   const requested=new URLSearchParams(window.location.search).get('view');
-  setView(requested&&['calendar','all','today','blocked','complete','inspections'].includes(requested)?requested:board.today.length?'today':board.blocked.length?'blocked':'all');
+  setView(requested&&['calendar','complete','inspections'].includes(requested)?requested:'all');
  },[]);
  const current=view||'all';
  const shown=finishPriority(activities).filter(a=>current==='all'?a.work_status!=='complete':current==='today'?['today','overdue'].includes(a.work_status):a.work_status===current);
  const variance=board.variance_days,doneCount=activities.filter(a=>a.work_status==='complete').length;
  const tone=variance==null?'':variance>0?'bad':'good';
  return <>
-  <div className={'track '+tone}>
-   <div><small>Forecast</small><b>{dateLabel(board.forecast_finish)}</b></div>
-   <div className="track-line" aria-hidden="true"><i style={{width:activities.length?doneCount/activities.length*100+'%':'0%'}}/></div>
-   <div><small>Turnover</small><b>{dateLabel(board.turnover_date)}</b></div>
-   <span className={'chip '+(variance==null?'':variance>0?'prio high':'prio done')}>{variance==null?'No forecast':variance>0?`${variance} days late`:variance===0?'On target':`${Math.abs(variance)} days early`}</span>
-  </div>
+  <p className={'plan-forecast '+tone}>{variance==null?'No finish forecast yet.':<>Forecast finish <b>{dateLabel(board.forecast_finish)}</b> · {variance>0?`${variance} days late`:variance===0?'on target':`${Math.abs(variance)} days early`}</>}</p>
   <div className="toolbar">
-   <Choices label="Schedule views" value={current} onChange={setView} options={[{value:'today',label:`Today ${board.today.length}`},{value:'blocked',label:`Blocked ${board.blocked.length}`},{value:'all',label:'All'},{value:'calendar',label:'Calendar'},{value:'inspections',label:`Inspections ${board.inspections.length}`},{value:'complete',label:'Done'}]}/>
+   <Choices label="Schedule views" value={current} onChange={setView} options={[{value:'all',label:'To do'},{value:'calendar',label:'Calendar'},{value:'inspections',label:'Inspections'},{value:'complete',label:'Done'}]}/>
    <span className="toolbar-actions"><button aria-label="Project dates" title="Project dates" disabled={!canEdit||busy} onClick={()=>open('profile')}><CalendarDays size={18}/></button><button className="primary" disabled={!canEdit||busy} onClick={()=>open('plan')}><Sparkles size={18}/>Build</button></span>
   </div>
   {current==='calendar'?<ScheduleCalendar board={board} open={open}/>:current==='inspections'?<>
@@ -65,9 +60,8 @@ export function ScheduleView({board,items,risks,canEdit,busy,open,onProgress}:{b
       {blocked&&<span className="chips">{signals.slice(0,2).map((s:Row,i:number)=><StatusChip key={i} label={s.label} tone="amber" kind={s.kind}/>)}</span>}</span>
     </button>
     <div className="progress">
-     <div className="bar" role="progressbar" aria-label={`${a.name} progress`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><b style={{width:pct+'%'}}/></div>
-     <span>{pct}%</span>
-     {pct<100&&<button className="primary small" disabled={!canEdit||busy||auto||blocked} title={auto?'Updates automatically':blocked?'Clear the blocker first':'Add progress'} aria-label={`Add progress to ${a.name}`} onClick={()=>onProgress(a,nextStepUp(pct))}>+25%</button>}
+     <span>{pct}% done</span>
+     {pct<100&&<button className="primary small" disabled={!canEdit||busy||auto||blocked} title={auto?'Updates automatically':blocked?'Clear the blocker first':'Add progress'} aria-label={`Add progress to ${a.name}`} onClick={()=>onProgress(a,nextStepUp(pct))}>Add 25%</button>}
      <button className="ghost" aria-label={`Edit ${a.name}`} title="Edit dates" disabled={!canEdit||busy} onClick={()=>open('activity-edit',a)}>Edit</button>
     </div>
    </article>})}

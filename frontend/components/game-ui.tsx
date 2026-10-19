@@ -1,8 +1,8 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {Flame,Star} from 'lucide-react';
+import {Flame,Star,X} from 'lucide-react';
 import {useGame} from '../lib/game';
-import {Tower,buildingFor} from './tower';
+import {Tower,buildingFor,FLOOR_XP} from './tower';
 
 const COLORS=['#1474a2','#0b3f5e','#0b2a3d','#8fc1db','#1474a2'];
 
@@ -15,11 +15,13 @@ export function Ring({value,size=96,stroke=12,children,label}:{value:number|null
 }
 
 export function GameBar(){
- const g=useGame();
- return <div className="game-bar" aria-label={`Level ${g.level}, ${g.xp} experience points, ${g.streak} day streak`}>
+ const g=useGame(),[open,setOpen]=useState(false);
+ useEffect(()=>{if(!open)return;const k=(e:KeyboardEvent)=>{if(e.key==='Escape')setOpen(false)};window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k)},[open]);
+ return <><div className="game-bar" aria-label={`Level ${g.level}, ${g.xp} experience points, ${g.streak} day streak`}>
   <span className="chip streak" title="Day streak"><Flame size={16}/>{g.streak}</span>
-  <span className="chip level" title={`${g.xp} XP`}><Star size={16}/>Lv {g.level}<i><b style={{width:g.levelProgress*100+'%'}}/></i></span>
- </div>;
+  <button className="chip level" title="See your building" aria-haspopup="dialog" onClick={()=>setOpen(true)}><Star size={16}/>Lv {g.level}<i><b style={{width:g.levelProgress*100+'%'}}/></i></button>
+ </div>
+ {open&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setOpen(false)}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="tower-title"><div className="modal-heading"><h2 id="tower-title">Your building</h2><button aria-label="Close" onClick={()=>setOpen(false)}><X size={20}/></button></div><p className="muted">Finish quests to earn XP. Every {FLOOR_XP} XP adds a floor. You have {g.xp} XP.</p><Tower/></section></div>}</>;
 }
 
 // Shows the tower for a few seconds after a reward and lets the new floor drop in, so finishing a task visibly builds it.
