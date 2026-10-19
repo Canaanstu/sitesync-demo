@@ -61,7 +61,7 @@ export function ScheduleView({board,items,risks,canEdit,busy,open,onProgress}:{b
     </button>
     <div className="progress">
      <span>{pct}% done</span>
-     {pct<100&&<button className="primary small" disabled={!canEdit||busy||auto||blocked} title={auto?'Updates automatically':blocked?'Clear the blocker first':'Add progress'} aria-label={`Add progress to ${a.name}`} onClick={()=>onProgress(a,nextStepUp(pct))}>Add 25%</button>}
+     {pct<100&&!auto&&!blocked&&<button className="primary small" disabled={!canEdit||busy||auto||blocked} title={auto?'Updates automatically':blocked?'Clear the blocker first':'Add progress'} aria-label={`Add progress to ${a.name}`} onClick={()=>onProgress(a,nextStepUp(pct))}>Add 25%</button>}
      <button className="ghost" aria-label={`Edit ${a.name}`} title="Edit dates" disabled={!canEdit||busy} onClick={()=>open('activity-edit',a)}>Edit</button>
     </div>
    </article>})}

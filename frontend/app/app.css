@@ -291,7 +291,15 @@
 .gx .calendar-grid button[aria-pressed=true]{background:var(--ink);color:#fff}
 .gx .calendar-grid .adjacent-month{color:#aab5bd}
 .gx .schedule-calendar-scroll{overflow:auto}
-.gx .schedule-calendar{min-width:640px}
+.gx .schedule-calendar{min-width:640px;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.gx .calendar-weekday{text-align:center;padding:4px 0}
+.gx .calendar-day{min-height:84px;padding:6px;border-radius:10px;background:var(--soft);display:flex;flex-direction:column;gap:4px;min-width:0}
+.gx .calendar-day time{font-weight:700;font-size:13px}
+.gx .calendar-day.outside-month{opacity:.45}
+.gx .calendar-day.calendar-today{background:var(--blue-soft);outline:2px solid var(--accent)}
+.gx .calendar-event small{display:block;font-weight:500}
+.gx .calendar-event.event-complete{background:var(--green-soft);color:var(--green)}
+.gx .calendar-event.event-inspection{background:#fff;border:1.5px solid var(--accent)}
 .gx .calendar-event{border-radius:8px;background:var(--blue-soft);color:var(--accent-d);font-weight:700;font-size:13px;padding:4px 8px;border:0;min-height:0;text-align:left;justify-content:flex-start}
 .gx .calendar-weekday{font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 
@@ -511,3 +519,4 @@
 .gx .plan-forecast{margin:4px 0 12px;font-size:1.05rem}
 .gx button.chip.level{cursor:pointer;min-height:26px;padding:2px 11px;border:0;background:var(--soft);font-size:13px;font-weight:700;color:var(--accent-d)}
 .gx button.chip.level:hover{background:var(--blue-soft)}
+.gx .content h1{margin-bottom:14px}
