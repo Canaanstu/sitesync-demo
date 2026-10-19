@@ -34,7 +34,7 @@ export function TaskCard({risk,onOpen,index=0}:{risk:Row,onOpen:()=>void,index?:
  const c=CAT[risk.category]||{icon:<Pin size={20}/>,label:'Item'},lvl=levelOf(risk.severity);
  return <button className={'task '+lvl} style={{animationDelay:index*50+'ms'}} onClick={onOpen}>
   <span className="task-icon" aria-hidden="true">{c.icon}</span>
-  <span className="task-body"><b>{risk.title}</b><span className="task-meta"><PriorityChip value={risk.severity}/><small>{c.label}{risk.due_date?` · due ${new Date(risk.due_date.slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}`:''}</small></span></span>
+  <span className="task-body"><b>{risk.title}</b><span className="task-meta">{risk.status==='in_progress'&&<span className="chip working">{risk.evidence?.in_progress_by?`${String(risk.evidence.in_progress_by).split(' ')[0]} is on it`:'In progress'}</span>}<PriorityChip value={risk.severity}/><small>{c.label}{risk.due_date?` · due ${new Date(risk.due_date.slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}`:''}</small></span></span>
  </button>;
 }
 

@@ -40,7 +40,7 @@ def retrieve(db, project_id, question):
     risk_question = bool(words(question) & {'risk', 'risks', 'delay', 'delays', 'attention', 'blocking'})
     for kind, cls in {**RECORDS, 'risks': Risk}.items():
         for row in db.scalars(select(cls).where(cls.project_id == project_id).limit(3000)):
-            if kind == 'risks' and row.status != 'open':
+            if kind == 'risks' and row.status not in ('open', 'in_progress'):
                 continue
             data = public(row)
             data.pop('raw_json', None)

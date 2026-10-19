@@ -40,7 +40,9 @@ def run_rules(db, project_id, today=None):
             risk = Risk(project_id=project_id, fingerprint=fingerprint)
             db.add(risk)
         # Preserve explicit dismiss/resolve decisions across reruns.
-        for key, value in dict(category=category, severity=severity, title=title, description=description, recommended_action=action, source_records=sources, due_date=due, evidence=evidence or {}).items():
+        kept = {k: v for k, v in (risk.evidence or {}).items() if k.startswith('in_progress')}
+        evidence = {**(evidence or {}), **kept}
+        for key, value in dict(category=category, severity=severity, title=title, description=description, recommended_action=action, source_records=sources, due_date=due, evidence=evidence).items():
             setattr(risk, key, value)
 
     for p in procurement:
@@ -71,7 +73,7 @@ def run_rules(db, project_id, today=None):
         if hits:
             add('email', e, 'email_followup', 'low', f'Review: {e.subject}', 'Communication contains a potential constraint; project impact is not yet confirmed.', 'Review the message and confirm whether the schedule is affected.', [source('emails', e)], evidence={'matched_terms': hits})
     for fingerprint, risk in existing.items():
-        if fingerprint not in active and risk.status == 'open':
+        if fingerprint not in active and risk.status in ('open', 'in_progress'):
             risk.status = 'resolved'
     db.flush()
     return rows(Risk)

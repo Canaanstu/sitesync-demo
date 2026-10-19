@@ -499,7 +499,7 @@ def projects(db: Session = Db, user=Auth):
         query = query.join(ProjectMember).where(ProjectMember.user_id == user.id)
     output = []
     for p in db.scalars(query):
-        risks = list(db.scalars(select(Risk).where(Risk.project_id == p.id, Risk.status == 'open')))
+        risks = list(db.scalars(select(Risk).where(Risk.project_id == p.id, Risk.status.in_(('open', 'in_progress')))))
         has_records = any(db.scalar(select(cls.id).where(cls.project_id == p.id).limit(1)) for cls in RECORDS.values())
         from .progress import completion_summary
         output.append({**public(p), **completion_summary(db,p.id), 'risk_count': len(risks), 'high_risks': sum(r.severity in ('critical', 'high') for r in risks), 'health_score': max(0, 100 - sum({'critical': 20, 'high': 10, 'medium': 5, 'low': 2}[r.severity] for r in risks)) if has_records else None})
@@ -796,10 +796,15 @@ def risk_detail(project_id: str, risk_id: str, db: Session = Db, user=Auth):
 def change_risk(project_id: str, risk_id: str, action: str, db: Session = Db, user=Auth):
     require_write(user)
     risk_detail(project_id, risk_id, db, user)
-    if action not in ('resolve', 'dismiss', 'reopen'):
+    if action not in ('resolve', 'dismiss', 'reopen', 'start'):
         raise HTTPException(404, 'Unknown action.')
     risk = db.get(Risk, risk_id)
-    risk.status = {'resolve': 'resolved', 'dismiss': 'dismissed', 'reopen': 'open'}[action]
+    risk.status = {'resolve': 'resolved', 'dismiss': 'dismissed', 'reopen': 'open', 'start': 'in_progress'}[action]
+    # Who picked a task up is kept in evidence so the whole crew sees it; stopping or finishing clears it.
+    evidence = {k: v for k, v in (risk.evidence or {}).items() if not k.startswith('in_progress')}
+    if action == 'start':
+        evidence.update(in_progress_by=user.full_name or user.email, in_progress_by_id=user.id)
+    risk.evidence = evidence
     audit(db, user, 'risk.' + action, {'risk_id': risk_id})
     db.commit()
     return public(risk)

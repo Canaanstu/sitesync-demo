@@ -22,12 +22,12 @@ function ProjectList({projects}:{projects:Row[]}){
  </nav>;
 }
 function SideTasks({project}:{project:Row}){
- const risks=useQuery({queryKey:['risks',project.id],queryFn:()=>api<Row[]>(`/projects/${project.id}/risks`)});
- const open=(risks.data||[]).filter(r=>r.status==='open');
+ const risks=useQuery({queryKey:['risks',project.id],queryFn:()=>api<Row[]>(`/projects/${project.id}/risks`),refetchInterval:15000});
+ const open=(risks.data||[]).filter(r=>['open','in_progress'].includes(r.status));
  return <div className="side-tasks">
-  {open.map(r=><Link key={r.id} href={`/projects/${project.id}`} className={'side-task '+levelOf(r.severity)}><span>{r.title}</span></Link>)}
+  {open.map(r=><Link key={r.id} href={`/projects/${project.id}`} className={'side-task '+levelOf(r.severity)}><span>{r.title}</span>{r.status==='in_progress'&&<small className="working-tag">{r.evidence?.in_progress_by?String(r.evidence.in_progress_by).split(' ')[0]+' is on it':'In progress'}</small>}</Link>)}
   {risks.data&&!open.length&&<small className="muted">All clear.</small>}
-  <div className="side-links"><Link href={`/projects/${project.id}`}>Open project</Link><Link href={`/projects/${project.id}/schedule`}>Schedule</Link><Link href={`/projects/${project.id}/procurement`}>Materials</Link></div>
+  <div className="side-links"><Link href={`/projects/${project.id}`}>Open project</Link><Link href={`/projects/${project.id}/schedule`}>Schedule</Link><Link href={`/projects/${project.id}/procurement`}>Procurement</Link></div>
  </div>;
 }
 
@@ -58,20 +58,32 @@ function CompanyCalendar({ops}:{ops:ReturnType<typeof useOps>}){
   </div></div></section>;
 }
 
-// Every purchase across projects, late ones first.
-function Materials({ops}:{ops:ReturnType<typeof useOps>}){
- const rows=ops.flatMap(({project,proc})=>(proc?.items||[]).map((x:Row)=>({...x,pid:project.id,pname:short(project.name)})))
-  .sort((a:Row,b:Row)=>Number(!!b.late&&b.status!=='delivered')-Number(!!a.late&&a.status!=='delivered')||String(a.expected_delivery_date||'9').localeCompare(String(b.expected_delivery_date||'9')));
- if(!rows.length)return <div className="empty"><span className="empty-art"><Package size={30}/></span><h3>No materials yet</h3></div>;
- return <div className="mat-table" role="table" aria-label="Materials across projects">
-  <div className="mat-row mat-head" role="row"><span>Item</span><span>Project</span><span>Status</span><span>Expected</span></div>
-  {rows.map((x:Row)=>{const late=x.late&&x.status!=='delivered';return <Link role="row" key={x.id} href={`/projects/${x.pid}/procurement`} className="mat-row">
-   <span><b>{x.name}</b>{x.linked_activities?.[0]&&<small>For {x.linked_activities[0]}</small>}</span><span>{x.pname}</span>
-   <span>{late?<span className="chip prio high">Late</span>:<span className="chip">{x.status}</span>}</span><span>{day(x.expected_delivery_date)}</span></Link>})}
- </div>;
+// Every purchase and delivery across projects, late ones first. Shipments (packages) supply the tracked ETA when there is one.
+const FILTERS:[string,string][]=[['all','All'],['late','Late'],['soon','Next 14 days'],['transit','In transit'],['delivered','Delivered']];
+function Procurement({ops}:{ops:ReturnType<typeof useOps>}){
+ const [filter,setFilter]=useState('all'),today=iso(new Date()),soon=iso(new Date(Date.now()+14*864e5));
+ const all:Row[]=ops.flatMap(({project,proc})=>(proc?.items||[]).map((x:Row)=>{
+  const ships=(proc?.packages||[]).filter((k:Row)=>k.data?.procurement_id===x.id&&k.status!=='received'),etas=ships.map((k:Row)=>k.data?.eta).filter(Boolean).sort();
+  const delivered=x.status==='delivered',eta=etas[0]||x.expected_delivery_date;
+  return {...x,pid:project.id,pname:short(project.name),delivered,late:!!x.late&&!delivered,eta,transit:!delivered&&ships.length>0,ships:ships.length};
+ })).sort((a:Row,b:Row)=>Number(b.late)-Number(a.late)||Number(a.delivered)-Number(b.delivered)||String(a.eta||'9').localeCompare(String(b.eta||'9')));
+ const match=(x:Row)=>filter==='all'||(filter==='late'&&x.late)||(filter==='delivered'&&x.delivered)||(filter==='transit'&&x.transit)||(filter==='soon'&&!x.delivered&&x.eta&&x.eta>=today&&x.eta<=soon);
+ const count=(f:string)=>all.filter(x=>f==='all'||(f==='late'&&x.late)||(f==='delivered'&&x.delivered)||(f==='transit'&&x.transit)||(f==='soon'&&!x.delivered&&x.eta&&x.eta>=today&&x.eta<=soon)).length;
+ const rows=all.filter(match);
+ if(!all.length)return <div className="empty"><span className="empty-art"><Package size={30}/></span><h3>No deliveries yet</h3></div>;
+ return <>
+  <div className="stat-row"><div className="stat bad"><b>{count('late')}</b><span>Late</span></div><div className="stat"><b>{count('soon')}</b><span>Due in 14 days</span></div><div className="stat"><b>{count('transit')}</b><span>In transit</span></div><div className="stat ok"><b>{count('delivered')}</b><span>Delivered</span></div></div>
+  <div className="filter-row" role="group" aria-label="Filter deliveries">{FILTERS.map(([k,label])=><button key={k} className={filter===k?'active':''} aria-pressed={filter===k} onClick={()=>setFilter(k)}>{label}<small>{count(k)}</small></button>)}</div>
+  <div className="mat-table" role="table" aria-label="Deliveries across projects">
+   <div className="mat-row mat-head" role="row"><span>Item</span><span>Project</span><span>Status</span><span>Needed</span><span>Expected</span></div>
+   {rows.map(x=><Link role="row" key={x.pid+x.id} href={`/projects/${x.pid}/procurement`} className="mat-row">
+    <span><b>{x.name}</b><small>{[x.vendor,x.linked_activities?.[0]&&'For '+x.linked_activities[0]].filter(Boolean).join(' · ')}</small></span><span>{x.pname}</span>
+    <span>{x.late?<span className="chip prio high">Late</span>:x.delivered?<span className="chip prio done">Delivered</span>:<span className="chip">{x.transit?'In transit':x.status}</span>}</span><span>{day(x.required_on_site_date)}</span><span>{day(x.eta)}</span></Link>)}
+   {!rows.length&&<div className="mat-row"><span>Nothing in this view.</span></div>}
+  </div></>;
 }
 
-const TABS=[['home','Overview',Home],['schedule','Schedule',CalendarDays],['materials','Materials',Package]] as const;
+const TABS=[['home','Overview',Home],['schedule','Schedule',CalendarDays],['procurement','Procurement',Package]] as const;
 export function Dashboard({projects,name,company}:{projects:Row[],name?:string,company?:string}){
  const [tab,setTab]=useState<string>('home'),ops=useOps(projects);
  return <div className="dash"><ProjectList projects={projects}/>
@@ -79,6 +91,6 @@ export function Dashboard({projects,name,company}:{projects:Row[],name?:string,c
    <div className="tabs" role="tablist" aria-label="Dashboard">{TABS.map(([k,label,Icon])=><button key={k} role="tab" aria-selected={tab===k} className={tab===k?'active':''} onClick={()=>setTab(k)}><Icon size={16}/>{label}</button>)}</div>
    {tab==='home'&&<DailyOverview projects={projects} name={name} company={company}/>}
    {tab==='schedule'&&<><h1>Schedule</h1><CompanyCalendar ops={ops}/></>}
-   {tab==='materials'&&<><h1>Materials</h1><Materials ops={ops}/></>}
+   {tab==='procurement'&&<><h1>Procurement</h1><Procurement ops={ops}/></>}
   </div></div>;
 }

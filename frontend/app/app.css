@@ -493,7 +493,7 @@ html[data-theme=dark] .gx .task:hover,html[data-theme=dark] .gx a.tile:hover{bac
 .gx .tabs button{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border:0;border-bottom:3px solid transparent;margin-bottom:-1.5px;border-radius:0;background:none;color:var(--muted);font-weight:700}
 .gx .tabs button.active{color:var(--ink);border-bottom-color:var(--accent)}
 .gx .mat-table{display:flex;flex-direction:column;border:1.5px solid var(--line);border-radius:16px;overflow:hidden;background:var(--paper)}
-.gx .mat-row{display:grid;grid-template-columns:2fr 1.2fr 1fr .8fr;gap:12px;align-items:center;padding:12px 16px;color:var(--ink);border-top:1.5px solid var(--line)}
+.gx .mat-row{display:grid;grid-template-columns:2fr 1.2fr 1fr .8fr .8fr;gap:12px;align-items:center;padding:12px 16px;color:var(--ink);border-top:1.5px solid var(--line)}
 .gx .mat-row:first-child{border-top:0}
 .gx a.mat-row:hover{background:var(--soft)}
 .gx .mat-head{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--soft)}
@@ -501,3 +501,16 @@ html[data-theme=dark] .gx .task:hover,html[data-theme=dark] .gx a.tile:hover{bac
 .gx .calendar-event.event-delivery{background:var(--paper);border:1.5px dashed var(--accent)}
 .gx a.calendar-event{display:block}
 @media (max-width:900px){.gx .dash{grid-template-columns:1fr}.gx .side{position:static;max-height:none}.gx .mat-row{grid-template-columns:1fr 1fr}.gx .mat-head{display:none}}
+
+.gx .chip.working{background:var(--green-soft);color:var(--green)}
+.gx .working-tag{display:block;margin-top:2px;font-weight:700;color:var(--green)}
+
+.gx .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px}
+.gx .stat{padding:14px 16px;border:1.5px solid var(--line);border-radius:16px;background:var(--paper);display:flex;flex-direction:column;gap:2px}
+.gx .stat b{font-size:28px;line-height:1}
+.gx .stat span{font-size:13px;font-weight:700;color:var(--muted)}
+.gx .stat.bad b{color:var(--accent-t)}.gx .stat.ok b{color:var(--green)}
+.gx .filter-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.gx .filter-row button{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 14px;border-radius:999px;font-weight:700;font-size:14px}
+.gx .filter-row button small{opacity:.7}
+.gx .filter-row button.active{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
