@@ -877,6 +877,23 @@ def chat_history(project_id: str, db: Session = Db, user=Auth):
     return [chat_view(db, m, u) for m, u in reversed(rows)]
 
 
+@app.get('/api/projects/{project_id}/warnings')
+def project_warnings(project_id: str, db: Session = Db, user=Auth):
+    from .warnings import due_warnings
+    return due_warnings(db, project_access(db, user, project_id))
+
+
+@app.get('/api/notifications')
+def notifications(db: Session = Db, user=Auth):
+    """Everything due within a week across the projects this person can open."""
+    from .warnings import due_warnings
+    query = select(Project).where(Project.organization_id == user.organization_id, Project.status != 'archived')
+    if user.role not in ('owner', 'admin'):
+        query = query.join(ProjectMember).where(ProjectMember.user_id == user.id)
+    found = [w for p in db.scalars(query) for w in due_warnings(db, p)]
+    return sorted(found, key=lambda w: (w['due'], w['project_name'], w['title']))
+
+
 @app.get('/api/projects/{project_id}/chat/members')
 def chat_people(project_id: str, db: Session = Db, user=Auth):
     project_access(db, user, project_id)

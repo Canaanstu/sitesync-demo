@@ -17,7 +17,7 @@ from .models import Project, Activity, Procurement, Submittal, RFI, Risk, Email,
 from .security import current_user, project_access, require_write, require_admin, rate_limit
 from .config import settings
 from .connectors import valid_token
-from .planning import workboard, schedule_tasks, template_tasks, local_today
+from .planning import workboard, schedule_tasks, template_tasks, local_today, finish_on
 from .workflow_ai import structured, ProposedSchedule, ProposedRFI, research_inspection
 from .parsing import parse_document
 
@@ -213,15 +213,26 @@ def progress(project_id: str,activity_id: str,body: Progress,db: Session=Db,user
     return public(a)
 
 
+def finish_from_duration(p, start, days):
+    # Working days from the project calendar: weekends and holidays do not count toward how long a job takes.
+    return finish_on(start, days, tuple(p.settings.get('workdays', [0,1,2,3,4])), p.settings.get('holidays', []))
+
+
 class ActivityPlan(BaseModel):
     start_date: date
-    finish_date: date
+    finish_date: date | None = None
+    duration_days: int | None = Field(default=None,ge=1,le=730)
+    due_date: date | None = None
+    name: str | None = Field(default=None,min_length=2,max_length=160)
+    trade: str | None = Field(default=None,max_length=80)
     progress_kind: Literal['field','inspection','delivery'] = 'field'
     progress_id: str | None = None
 
     @model_validator(mode='after')
     def dates_in_order(self):
-        if self.finish_date < self.start_date:
+        if not self.finish_date and not self.duration_days:
+            raise ValueError('Enter how many working days this takes.')
+        if self.finish_date and self.finish_date < self.start_date:
             raise ValueError('Finish must be on or after start.')
         if self.progress_kind != 'field' and not self.progress_id:
             raise ValueError('Choose the evidence that completes this milestone.')
@@ -248,14 +259,46 @@ def edit_activity_plan(project_id: str,activity_id: str,body: ActivityPlan,db: S
     data.pop('duration_days',None)
     data['progress_source']={'kind':body.progress_kind,'id':body.progress_id}
     data['plan_updated_at']=now()
+    if body.due_date:
+        data['due_date']=body.due_date.isoformat()
+    else:
+        data.pop('due_date',None)
+    if body.name:
+        a.name=body.name
+    if body.trade is not None:
+        a.trade=body.trade
     if body.progress_kind=='field':
         a.percent_complete=old_progress
     else:
         data.pop('actual_finish',None)
     a.raw_json=data
+    finish=finish_from_duration(p,body.start_date,body.duration_days) if body.duration_days else body.finish_date
     a.start_date=body.start_date.isoformat()
-    a.finish_date=body.finish_date.isoformat()
+    a.finish_date=finish.isoformat()
     record_audit(db,user,'activity.plan',project_id,a.id)
+    db.commit()
+    return public(a)
+
+
+class NewActivity(BaseModel):
+    name: str = Field(min_length=2,max_length=160)
+    trade: str = Field(default='',max_length=80)
+    start_date: date
+    duration_days: int = Field(ge=1,le=730)
+    due_date: date | None = None
+
+
+@router.post('/activities')
+def add_activity(project_id: str,body: NewActivity,db: Session=Db,user=Auth):
+    p=access(db,user,project_id,True)
+    finish=finish_from_duration(p,body.start_date,body.duration_days)
+    raw={'created_by':user.id,'plan_updated_at':now()}
+    if body.due_date:
+        raw['due_date']=body.due_date.isoformat()
+    a=Activity(project_id=project_id,name=body.name.strip(),trade=body.trade.strip(),start_date=body.start_date.isoformat(),finish_date=finish.isoformat(),percent_complete=0,raw_json=raw)
+    db.add(a)
+    db.flush()
+    record_audit(db,user,'activity.create',project_id,a.id)
     db.commit()
     return public(a)
 

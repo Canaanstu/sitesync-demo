@@ -173,3 +173,30 @@ def test_remember_me_keeps_the_session_for_thirty_days(monkeypatch):
         long = client.post('/api/auth/login', json={'email': email, 'password': PASSWORD, 'remember': True})
         assert 'Max-Age=28800' in short.headers['set-cookie']
         assert f'Max-Age={30 * 24 * 3600}' in long.headers['set-cookie']
+
+
+def test_start_working_is_shared_and_survives_a_rescan(c):
+    pid = project(c)
+    risk = ok(c.get(f'/api/projects/{pid}/risks'))[0]
+    started = ok(c.post(f'/api/projects/{pid}/risks/{risk["id"]}/start'))
+    assert started['status'] == 'in_progress' and started['evidence']['in_progress_by'] == 'Flow Tester'
+    ok(c.post(f'/api/projects/{pid}/risks/run'))
+    again = next(r for r in ok(c.get(f'/api/projects/{pid}/risks')) if r['id'] == risk['id'])
+    assert again['status'] == 'in_progress' and again['evidence']['in_progress_by'] == 'Flow Tester'
+    stopped = ok(c.post(f'/api/projects/{pid}/risks/{risk["id"]}/reopen'))
+    assert stopped['status'] == 'open' and 'in_progress_by' not in stopped['evidence']
+
+
+def test_new_task_has_duration_due_date_and_a_one_week_warning(c):
+    from datetime import date, timedelta
+    pid = project(c)
+    soon = (date.today() + timedelta(days=3)).isoformat()
+    made = ok(c.post(f'/api/projects/{pid}/ops/activities', json={'name': 'Hang drywall', 'trade': 'Drywall', 'start_date': date.today().isoformat(), 'duration_days': 5, 'due_date': soon}))
+    assert made['raw_json']['due_date'] == soon and made['finish_date'] >= made['start_date']
+    warned = ok(c.get(f'/api/projects/{pid}/warnings'))
+    assert any(w['key'] == f'work:{made["id"]}' and w['days'] == 3 for w in warned)
+    assert any(w['key'] == f'work:{made["id"]}' for w in ok(c.get('/api/notifications')))
+    edited = ok(c.patch(f'/api/projects/{pid}/ops/activities/{made["id"]}/plan', json={'name': 'Paint walls', 'trade': 'Paint', 'start_date': date.today().isoformat(), 'duration_days': 2}))
+    assert edited['name'] == 'Paint walls' and 'due_date' not in edited['raw_json']
+    far = ok(c.post(f'/api/projects/{pid}/ops/activities', json={'name': 'Punch list', 'start_date': (date.today() + timedelta(days=60)).isoformat(), 'duration_days': 2}))
+    assert not any(w['key'] == f'work:{far["id"]}' for w in ok(c.get(f'/api/projects/{pid}/warnings')))

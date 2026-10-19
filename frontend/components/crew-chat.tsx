@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {FileText,MessagesSquare,Paperclip,Pencil,Send,Trash2,X} from 'lucide-react';
 import {api,Row} from '../lib/api';
+import {WeekAhead} from './notifications';
 
 const clock=(v:string)=>{const d=new Date(v),today=new Date().toDateString()===d.toDateString();return d.toLocaleString('en-US',today?{hour:'numeric',minute:'2-digit'}:{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})};
 const size=(n:number)=>n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
@@ -46,6 +47,7 @@ export function CrewChat({projectId,meId,admin}:{projectId:string,meId:string,ad
  }
  function attach(f?: File){if(!f)return;if(f.size>5*1024*1024){setError('Attachments can be up to 5 MB.');return}setError('');setFile(f)}
  return <section className="crew-chat">
+  <WeekAhead projectId={projectId}/>
   <div className="chat-scroll" role="log" aria-live="polite" aria-label="Crew messages">
    {!list.length&&!chat.isLoading&&<div className="empty"><span className="empty-art"><MessagesSquare size={30}/></span><h3>No messages yet</h3><p>Say hello to everyone on this project. Type @ to mention someone.</p></div>}
    {list.map((m,i)=>{const mine=m.user_id===meId,first=i===0||list[i-1].user_id!==m.user_id,hit=m.mentions?.includes(meId),can=mine||admin;

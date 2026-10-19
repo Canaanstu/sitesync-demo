@@ -43,7 +43,7 @@ function CompanyCalendar({ops}:{ops:ReturnType<typeof useOps>}){
  const [month,setMonth]=useState(()=>new Date());
  const first=new Date(month.getFullYear(),month.getMonth(),1),start=new Date(first);start.setDate(1-(first.getDay()+6)%7);
  const dates=Array.from({length:42},(_,i)=>new Date(start.getFullYear(),start.getMonth(),start.getDate()+i));
- const today=iso(new Date());
+ const today=iso(new Date()),due=(useQuery({queryKey:['notifications'],queryFn:()=>api<Row[]>('/notifications'),refetchInterval:60000}).data||[]);
  const events=(key:string)=>ops.flatMap(({project,board,proc})=>{
   const href=`/projects/${project.id}/schedule`,pn=short(project.name),out:{id:string,label:string,sub:string,kind:string,href:string}[]=[];
   (board?.activities||[]).forEach((a:Row)=>{if(a.start_date&&a.start_date<=key&&(a.finish_date||a.start_date)>=key)out.push({id:a.id,label:a.name,sub:pn,kind:a.work_status==='complete'?'event-complete':'',href})});
@@ -53,7 +53,7 @@ function CompanyCalendar({ops}:{ops:ReturnType<typeof useOps>}){
  });
  return <section className="panel calendar-panel"><div className="section-heading"><h3 aria-live="polite">{month.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</h3><div className="ops-actions"><button aria-label="Previous month" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft/></button><button onClick={()=>setMonth(new Date())}>Today</button><button aria-label="Next month" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight/></button></div></div>
   <div className="schedule-calendar-scroll"><div className="schedule-calendar" aria-label="All projects calendar">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=><b className="calendar-weekday" key={d}>{d}</b>)}
-   {dates.map(d=>{const key=iso(d);return <div className={'calendar-day '+(d.getMonth()!==month.getMonth()?'outside-month ':'')+(key===today?'calendar-today':'')} key={key}><time dateTime={key}>{d.getDate()}</time>
+   {dates.map(d=>{const key=iso(d);return <div className={'calendar-day '+(d.getMonth()!==month.getMonth()?'outside-month ':'')+(key===today?'calendar-today':'')} key={key}><time dateTime={key}>{d.getDate()}</time>{due.filter(w=>w.due===key).length>0&&<span className="due-flag" title={due.filter(w=>w.due===key).map(w=>w.project_name+': '+w.title).join('\n')}>{due.filter(w=>w.due===key).length} due</span>}
     {events(key).map(e=><Link key={e.id+key} href={e.href} className={'calendar-event '+e.kind}>{e.label}<small>{e.sub}</small></Link>)}</div>})}
   </div></div></section>;
 }
