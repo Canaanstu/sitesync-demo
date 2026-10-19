@@ -17,6 +17,8 @@ Live: https://sitesync-demo.vercel.app (sign in at `/login`). Two Vercel project
 - `sitesync-api` (root `backend/`): FastAPI served by `index.py`, with Neon Postgres from the Vercel Marketplace. Tables and demo data are created on the first request, guarded by a Postgres advisory lock so concurrent cold starts cannot seed twice.
 - `sitesync-demo` (root `frontend/`): Next.js. `API_INTERNAL_URL` points at the API project; `/api/*` is proxied so the session cookie stays same-origin.
 
+Visitors create their own account at `/signup` (`OPEN_SIGNUP=true`). Each account gets a private organization seeded with the fictional sample projects, so people cannot see or change each other's data. Sign-ups are rate limited and capped (`SIGNUPS_PER_HOUR`, `MAX_ORGANIZATIONS`). There is no email verification or password reset yet, so keep this to fictional or test data.
+
 Production env vars on `sitesync-api`: `APP_ENV=hosted-demo`, `DEMO_MODE=true`, `PRIVATE_DEMO=true`, `ENABLE_EMAIL_SEND=false`, `APP_URL`, `API_URL`, plus `PRIVATE_DEMO_PASSWORD` (20-72 bytes), `JWT_SECRET` and `TOKEN_ENCRYPTION_KEY`. Neon supplies `DATABASE_URL`/`POSTGRES_URL`. Vercel request bodies are capped near 4.5 MB, so large uploads are limited. There is no background scheduler on Vercel; use Vercel Cron if scheduled sync is needed.
 
 ## Static demo on GitHub Pages
