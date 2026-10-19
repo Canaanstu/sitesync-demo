@@ -233,7 +233,8 @@
 .gx .chat-bubble{display:flex;flex-direction:column;gap:6px;align-items:inherit;max-width:100%}
 .gx .chat-text{padding:9px 14px;border-radius:18px;background:var(--soft);overflow-wrap:anywhere}
 .gx .chat-text p{margin:0;white-space:pre-wrap}
-.gx .chat-msg.mine .chat-text{background:var(--ink);color:#fff}
+.gx .chat-msg.mine .chat-text,.gx .chat-msg.mine .chat-text p{background:var(--ink);color:#fff}
+.gx .chat-msg.mine .chat-text p{background:none}
 .gx .chat-msg.tagged .chat-text{box-shadow:0 0 0 2px var(--accent)}
 .gx .mention{font-weight:800;color:var(--accent)}
 .gx .mention.on-dark{color:#ffd9a8}
