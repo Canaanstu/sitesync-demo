@@ -498,3 +498,13 @@
 .gx .guide-item p{margin:0;color:var(--muted,#4a6577);font-size:14px;line-height:1.5}
 .gx .guide-item .row-icon{flex:none}
 .gx .role-list{display:grid;gap:6px;margin-top:8px;padding:0;list-style:none;font-size:14px}
+
+/* Simpler screens: one main list, everything else folded away until asked for. */
+.gx .crew-plan{display:flex;flex-direction:column;gap:14px}
+.gx .crew-plan .lead{font-size:1.05rem;margin:6px 0 0}
+.gx .fold>summary,.gx .fold-inline>summary{cursor:pointer;font-weight:700;font-size:1.05rem;min-height:44px;display:flex;align-items:center;list-style:none}
+.gx .fold>summary::-webkit-details-marker,.gx .fold-inline>summary::-webkit-details-marker{display:none}
+.gx .fold>summary::after,.gx .fold-inline>summary::after{content:'+';margin-left:auto;font-size:1.4rem;font-weight:600}
+.gx .fold[open]>summary::after,.gx .fold-inline[open]>summary::after{content:'–'}
+.gx .fold-inline{margin-top:12px;border-top:1px solid var(--line)}
+.gx .outbox-row{flex-direction:column;align-items:flex-start;gap:4px}
