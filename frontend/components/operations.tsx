@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {Sparkles,CalendarDays,Package,ClipboardList,ArrowRight,Check,Plus,X,Building2,Clock3} from 'lucide-react';
 import {api,Row} from '../lib/api';
+import {award} from '../lib/game';
 import {MailComposer,emailList} from './mail-composer';
 import {ActivityChips,ChoiceField,Choices,DateField,FileDrop,StatusChip} from './field-controls';
 import {ProcurementEditor} from './procurement-editor';
@@ -26,18 +27,18 @@ export function Operations({projectId,section,canEdit,admin}:{projectId:string,s
  const [rfiDirty,setRfiDirty]=useState(false),[planDirty,setPlanDirty]=useState(false),[planApproved,setPlanApproved]=useState(false);
  useEffect(()=>{if(!rfiDirty)return;const protect=(e:BeforeUnloadEvent)=>{e.preventDefault();};const protectLink=(e:MouseEvent)=>{const link=(e.target as Element).closest('a[href]');if(!link||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;const url=new URL(link.getAttribute('href')!,location.href);if(url.origin===location.origin&&url.pathname!==location.pathname){e.preventDefault();e.stopPropagation();setNotice('Save your RFI changes before leaving this page.');}};window.addEventListener('beforeunload',protect);document.addEventListener('click',protectLink,true);return()=>{window.removeEventListener('beforeunload',protect);document.removeEventListener('click',protectLink,true);};},[rfiDirty]);
  const [undo,setUndo]=useState<{message:string,perform:()=>Promise<unknown>}|null>(null),[rfiView,setRfiView]=useState('new'),[rfiDescription,setRfiDescription]=useState(''),[issue,setIssue]=useState('');
- async function progress(a:Row,value:number){await run(async()=>{await api(base+'/activities/'+a.id,{percent_complete:value},'PATCH');setUndo({message:`${a.name}: progress updated to ${value}%.`,perform:()=>api(base+'/activities/'+a.id,{percent_complete:a.percent_complete||0},'PATCH')})})}
- async function receive(x:Row){await run(async()=>{await api(base+'/packages/'+x.id,{...x.data,status:'received'},'PATCH');close();setUndo({message:`${x.data.label}: receipt recorded. Schedule holds refreshed.`,perform:()=>api(base+'/packages/'+x.id,{...x.data,status:x.status},'PATCH')})})}
+ async function progress(a:Row,value:number){await run(async()=>{await api(base+'/activities/'+a.id,{percent_complete:value},'PATCH');award(value===100?40:10,'Progress');setUndo({message:`${a.name}: progress updated to ${value}%.`,perform:()=>api(base+'/activities/'+a.id,{percent_complete:a.percent_complete||0},'PATCH')})})}
+ async function receive(x:Row){await run(async()=>{await api(base+'/packages/'+x.id,{...x.data,status:'received'},'PATCH');award(30,'Delivery received');close();setUndo({message:`${x.data.label}: receipt recorded. Schedule holds refreshed.`,perform:()=>api(base+'/packages/'+x.id,{...x.data,status:x.status},'PATCH')})})}
  const b=board.data,p=b?.project,items:Row[]=procurement.data?.items||[],packages:Row[]=procurement.data?.packages||[],activities:Row[]=b?.activities||[];
  async function run(fn:()=>Promise<void>){setBusy(true);setError('');setNotice('');try{await fn();await cache.invalidateQueries()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  function close(){setDialog('');setEditing(null);setMail(null);setPlan(null);setPlanDirty(false)}
  const modalBehavior=useDialog(dialog,close,busy);
  function open(kind:string,row:Row|null=null){setProcurementDirty(false);setError('');setEditing(row);setDialog(kind)}
  function activitySelect(selected:string[]=[]){return <ActivityChips activities={activities.map(a=>({id:a.id,name:a.name}))} selected={selected}/>;}
- if(board.isPending)return <div className="loading" role="status">Loading project operations…</div>;
+ if(board.isPending)return <div className="loading" role="status">Loading…</div>;
  if(board.error||!b)return <div className="error">{board.error?.message||'Unable to load project operations.'}</div>;
  const heading={schedule:['SCHEDULE STUDIO','Build the plan. Keep the date.','A daily work plan connected to materials, inspections and turnover.'],procurement:['MATERIALS & DELIVERIES','Everything arriving. Everything connected.','Track purchase packages against the work that depends on them.'],rfi:['RFI WORKSPACE','From field question to clear direction.','Describe the issue, attach your evidence, and review a coordinated RFI.'],agents:['YOUR PROJECT TEAM','Less chasing. More building.','Your coordinator and inspection researcher prepare the next steps.']}[section]||[];
- return <div className="operations"><header className="ops-page-title"><h2>{{schedule:'Schedule',procurement:'Procurement',rfi:'RFIs',agents:'Project agents'}[section]}</h2><span>{p.settings.city||'Set project location'}</span><span className="approval-note"><Check size={18}/>AI drafts. You approve before anything is sent.</span></header>
+ return <div className="operations"><header className="ops-page-title"><h2>{{schedule:'Plan',procurement:'Materials',rfi:'RFIs',agents:'Crew'}[section]}</h2><span className="muted">{p.settings.city||''}</span><span className="approval-note"><Check size={14}/>You approve before anything is sent</span></header>
  {undo&&<div className="undo-bar" role="status"><span>{undo.message}</span><button disabled={busy} onClick={()=>run(async()=>{await undo.perform();setUndo(null);setNotice('Change undone. Project forecast refreshed.')})}>Undo</button></div>}
  {(error||procurement.error||rfis.error||agents.error)&&<div className="error" role="alert">{error||procurement.error?.message||rfis.error?.message||agents.error?.message}</div>}{notice&&<div className="ops-note" role="status">{notice}</div>}
  {section==='schedule'&&<ScheduleView board={b} items={items} risks={risks.data||[]} canEdit={canEdit} busy={busy} open={open} onProgress={progress}/> }

@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {ArrowRight,CalendarDays,Check,Package,Plus,Sparkles} from 'lucide-react';
+import {ArrowRight,CalendarDays,Check,CheckCircle2,Hammer,Hourglass,PackageCheck,Package,PackageX,PartyPopper,Plus,Search,Sparkles,Siren,Construction,Smile} from 'lucide-react';
 import {Row} from '../lib/api';
 import {ScheduleCalendar} from './schedule-calendar';
 import {Choices,StatusChip} from './field-controls';
@@ -26,27 +26,75 @@ export function activitySignals(a:Row,items:Row[],risks:Row[]){
  return signals;
 }
 
+
+const nextStepUp=(v:number)=>[25,50,75,100].find(n=>n>v)??100;
+const daysBetween=(a?:string,b?:string)=>a&&b?Math.round((day(a)-day(b))/864e5):null;
+
 export function ScheduleView({board,items,risks,canEdit,busy,open,onProgress}:{board:Row,items:Row[],risks:Row[],canEdit:boolean,busy:boolean,open:(kind:string,row?:Row|null)=>void,onProgress:(a:Row,value:number)=>void}){
- const [view,setView]=useState('all');
- useEffect(()=>{const requested=new URLSearchParams(window.location.search).get('view');if(requested&&['calendar','all','today','blocked','complete','inspections'].includes(requested))setView(requested);},[]);
+ const [view,setView]=useState('');
  const activities:Row[]=board.activities||[];
- const shown=finishPriority(activities).filter(a=>view==='all'||(view==='today'?['today','overdue'].includes(a.work_status):a.work_status===view));
- const variance=board.variance_days;
- return <><div className="ops-metrics"><div><span>Turnover target</span><strong>{dateLabel(board.turnover_date)}</strong><small>{board.project.settings.dates_are_demo?'Editable demo date':'Agreed project target'}</small></div><div><span>Forecast finish</span><strong>{dateLabel(board.forecast_finish)}</strong><small>{board.forecast_is_conditional?'Depends on unresolved holds':'Based on recorded progress'}</small></div><div><span>Work today</span><strong>{board.today.length?`${board.today.length} ${board.today.length===1?'activity':'activities'}`:'Nothing ready today'}</strong><small>{board.blocked.length?`${board.blocked.length} activities need a blocker cleared`:'No unfinished activities due today'}</small></div><div><span>Forecast vs. turnover</span><strong>{variance==null?'Not calculated':variance>0?`${variance} days late`:variance===0?'On target':`${Math.abs(variance)} days early`}</strong><small>Planning forecast, not a completion promise</small></div></div>
- <div className="section-heading"><div><h2>Work plan <span className="muted">/ {dateLabel(board.as_of)}</span></h2><p>Priority by linked work and forecast; unresolved dates first.</p></div><div className="ops-actions"><button disabled={!canEdit||busy} onClick={()=>open('profile')}><CalendarDays size={18}/>Project dates</button><button className="primary" disabled={!canEdit||busy} onClick={()=>open('plan')}><Sparkles size={18}/>Build schedule</button></div></div>
- <Choices label="Schedule views" value={view} onChange={setView} options={[{value:'calendar',label:'Calendar'},{value:'all',label:'Full schedule'},{value:'today',label:`Do today (${board.today.length})`},{value:'blocked',label:`Blocked (${board.blocked.length})`},{value:'complete',label:'Completed'},{value:'inspections',label:`Inspections (${board.inspections.length})`}]}/>
- {view==='calendar'?<ScheduleCalendar board={board} open={open}/>:view==='inspections'?<><div className="section-heading"><p>Record appointments and hold points. SiteSync does not book inspections.</p><button className="primary" disabled={!canEdit||busy} onClick={()=>open('inspection')}><Plus size={18}/>Add inspection</button></div><div className="ops-card-grid">{board.inspections.map((i:Row)=><article className="panel ops-card inspection-card" key={i.id}><StatusChip label={i.status} tone={i.status==='passed'?'blue':'amber'} kind="inspection"/><h3>{i.data.name}</h3><p><b>{i.data.scheduled_date?dateLabel(i.data.scheduled_date):'Appointment needed'}</b>{i.data.target_date&&` · Target ${dateLabel(i.data.target_date)}`}</p><p>{i.data.blocks_activity_ids?.length||0} linked activities</p><button className="primary" disabled={!canEdit||busy} onClick={()=>open('inspection-detail',i)}>Review inspection<ArrowRight size={18}/></button></article>)}</div>{!board.inspections.length&&<div className="empty"><CalendarDays/><h3>No inspections recorded</h3><p>Add an inspection to connect its appointment to the work it holds.</p></div>}</>:<div className="schedule-list">{shown.map(a=>{const signals=activitySignals(a,items,risks);return <article className="panel schedule-activity" key={a.id}><div className="activity-information"><div className="signal-line">{signals.length?signals.map((s:Row,i:number)=><StatusChip key={i} label={s.label} tone="amber" kind={s.kind}/>):<StatusChip label={a.work_status==='today'?'Ready today':a.work_status==='overdue'?'Overdue':a.work_status==='complete'?'Complete':'Upcoming'} tone={a.work_status==='overdue'?'amber':'blue'}/>}</div><h3>{a.name}</h3><p>{a.trade} · {a.remaining_workdays??'Unknown'} workdays remaining</p>{signals.length>0&&<p className="blocker-detail">{signals.map((s:Row)=>s.detail).join(' · ')}</p>}<button className="text-button" onClick={()=>open('activity',{...a,signals})}>View activity & next step<ArrowRight size={18}/></button></div><div className="activity-dates"><span>Forecast finish</span><strong>{dateLabel(a.forecast_finish)}</strong><small>Baseline {dateLabel(a.finish_date)}</small></div><div className="progress-control"><b>Progress · {a.percent_complete||0}%</b><Choices label={'Progress '+a.name} value={String(a.percent_complete||0)} onChange={v=>onProgress(a,Number(v))} disabled={!canEdit||busy||['inspection','delivery'].includes(a.raw_json?.progress_source?.kind)} options={[0,25,50,75,100].map(v=>({value:String(v),label:v+'%'}))}/><small>{a.progress_note||'Recorded field progress'}</small><button onClick={()=>open('activity-edit',a)}>Edit dates & automation</button></div></article>})}{!shown.length&&<div className="empty"><Check/><h3>{view==='today'?'No activities ready for work today':'No activities in this view'}</h3><p>{view==='today'&&board.blocked.length?'Open Blocked to see what needs to be cleared.':'Choose another view or build a schedule to get started.'}</p></div>}</div>}</>;
+ useEffect(()=>{
+  const requested=new URLSearchParams(window.location.search).get('view');
+  setView(requested&&['calendar','all','today','blocked','complete','inspections'].includes(requested)?requested:board.today.length?'today':board.blocked.length?'blocked':'all');
+ },[]);
+ const current=view||'all';
+ const shown=finishPriority(activities).filter(a=>current==='all'?a.work_status!=='complete':current==='today'?['today','overdue'].includes(a.work_status):a.work_status===current);
+ const variance=board.variance_days,doneCount=activities.filter(a=>a.work_status==='complete').length;
+ const tone=variance==null?'':variance>0?'bad':'good';
+ return <>
+  <div className={'track '+tone}>
+   <div><small>Forecast</small><b>{dateLabel(board.forecast_finish)}</b></div>
+   <div className="track-line" aria-hidden="true"><i style={{width:activities.length?doneCount/activities.length*100+'%':'0%'}}/></div>
+   <div><small>Turnover</small><b>{dateLabel(board.turnover_date)}</b></div>
+   <span className={'chip '+(variance==null?'':variance>0?'prio high':'prio done')}>{variance==null?'No forecast':variance>0?`${variance} days late`:variance===0?'On target':`${Math.abs(variance)} days early`}</span>
+  </div>
+  <div className="toolbar">
+   <Choices label="Schedule views" value={current} onChange={setView} options={[{value:'today',label:`Today ${board.today.length}`},{value:'blocked',label:`Blocked ${board.blocked.length}`},{value:'all',label:'All'},{value:'calendar',label:'Calendar'},{value:'inspections',label:`Inspections ${board.inspections.length}`},{value:'complete',label:'Done'}]}/>
+   <span className="toolbar-actions"><button aria-label="Project dates" title="Project dates" disabled={!canEdit||busy} onClick={()=>open('profile')}><CalendarDays size={18}/></button><button className="primary" disabled={!canEdit||busy} onClick={()=>open('plan')}><Sparkles size={18}/>Build</button></span>
+  </div>
+  {current==='calendar'?<ScheduleCalendar board={board} open={open}/>:current==='inspections'?<>
+   <div className="list">{board.inspections.map((i:Row)=><button className="row-card" key={i.id} onClick={()=>open('inspection-detail',i)}><span className="row-icon"><Search size={20}/></span><span className="row-main"><b>{i.data.name}</b><small>{i.data.scheduled_date?dateLabel(i.data.scheduled_date):'Needs appointment'}</small></span><StatusChip label={i.status} tone={i.status==='passed'?'blue':'amber'}/></button>)}</div>
+   {!board.inspections.length&&<div className="empty"><span className="empty-art"><Search size={30}/></span><h3>No inspections</h3></div>}
+   <button className="fab" disabled={!canEdit||busy} onClick={()=>open('inspection')}><Plus size={18}/>Inspection</button>
+  </>:<div className="list">{shown.map(a=>{
+   const signals=activitySignals(a,items,risks),pct=a.percent_complete||0,auto=['inspection','delivery'].includes(a.raw_json?.progress_source?.kind),blocked=signals.length>0;
+   return <article className={'activity '+(blocked?'blocked':a.work_status==='complete'?'done':'')} key={a.id}>
+    <button className="activity-main" onClick={()=>open('activity',{...a,signals})}>
+     <span className="row-icon">{a.work_status==='complete'?<CheckCircle2 size={20}/>:blocked?<Construction size={20}/>:a.work_status==='today'?<Hammer size={20}/>:<Hourglass size={20}/>}</span>
+     <span className="row-main"><b>{a.name}</b><small>{a.trade} · due {dateLabel(a.forecast_finish)}</small>
+      {blocked&&<span className="chips">{signals.slice(0,2).map((s:Row,i:number)=><StatusChip key={i} label={s.label} tone="amber" kind={s.kind}/>)}</span>}</span>
+    </button>
+    <div className="progress">
+     <div className="bar" role="progressbar" aria-label={`${a.name} progress`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><b style={{width:pct+'%'}}/></div>
+     <span>{pct}%</span>
+     {pct<100&&<button className="primary small" disabled={!canEdit||busy||auto||blocked} title={auto?'Updates automatically':blocked?'Clear the blocker first':'Add progress'} aria-label={`Add progress to ${a.name}`} onClick={()=>onProgress(a,nextStepUp(pct))}>+25%</button>}
+     <button className="ghost" aria-label={`Edit ${a.name}`} title="Edit dates" disabled={!canEdit||busy} onClick={()=>open('activity-edit',a)}>Edit</button>
+    </div>
+   </article>})}
+   {!shown.length&&<div className="empty"><span className="empty-art">{current==='today'?<Smile size={30}/>:<PartyPopper size={30}/>}</span><h3>{current==='today'?'Nothing due today':current==='blocked'?'Nothing blocked':'All done here'}</h3></div>}
+  </div>}
+ </>;
 }
 
 export function ProcurementView({items,packages,canEdit,busy,open}:{items:Row[],packages:Row[],canEdit:boolean,busy:boolean,open:(kind:string,row?:Row|null)=>void}){
  const [view,setView]=useState('conflicts');
- const conflicts=items.filter(i=>i.late&&i.status!=='delivered');
- const incoming=items.filter(i=>i.status!=='delivered');
+ const conflicts=items.filter(i=>i.late&&i.status!=='delivered'),incoming=items.filter(i=>i.status!=='delivered');
  const received=packages.filter(p=>p.status==='received');
  const deliveredWithoutPackages=items.filter(i=>i.status==='delivered'&&!packages.some(p=>p.data.procurement_id===i.id));
  const shown=[...(view==='conflicts'?conflicts:incoming)].sort((a,b)=>day(a.schedule_need_date)-day(b.schedule_need_date));
- return <><div className="ops-metrics"><div><span>Schedule conflicts</span><strong>{conflicts.length}</strong><small>Expected after the work needs them</small></div><div><span>Incoming materials</span><strong>{incoming.length}</strong><small>{packages.filter(p=>p.status!=='received').length} {packages.filter(p=>p.status!=='received').length===1?'package':'packages'} being tracked</small></div><div><span>Receipts</span><strong>{received.length+deliveredWithoutPackages.length}</strong><small>Received packages and delivered items without packages</small></div><div><span>Delivery updates</span><strong>Team recorded</strong><small>Carrier tracking opens separately</small></div></div>
- <div className="section-heading"><div><h2>Materials & deliveries</h2><p>See the schedule impact first. Review a delivery for tracking, receipts, and edits.</p></div><button className="primary" disabled={!canEdit||busy} onClick={()=>open('purchase')}><Plus size={18}/>Add procurement item</button></div>
- <Choices label="Procurement views" value={view} onChange={setView} options={[{value:'conflicts',label:`Schedule conflicts (${conflicts.length})`},{value:'incoming',label:`Incoming (${incoming.length})`},{value:'received',label:`Receipts (${received.length+deliveredWithoutPackages.length})`}]}/>
- {view==='received'?<div className="ops-card-grid">{received.map(p=><article key={p.id} className="panel ops-card delivery-card"><StatusChip label="Received" kind="delivery"/><h3>{p.data.label}</h3><p>{items.find(i=>i.id===p.data.procurement_id)?.name||'Procurement package'}</p><p>{p.data.received_at?`Recorded ${dateLabel(p.data.received_at)}`:'Receipt date not recorded'}</p><button onClick={()=>open('delivery',{item:items.find(i=>i.id===p.data.procurement_id),packages:packages.filter(x=>x.data.procurement_id===p.data.procurement_id)})}>View receipt<ArrowRight size={18}/></button></article>)}{deliveredWithoutPackages.map(item=><article className="panel ops-card delivery-card" key={item.id}><StatusChip label="Delivered" kind="delivery"/><h3>{item.name}</h3><p>No individual packages tracked.</p><button onClick={()=>open('delivery',{item,packages:[]})}>View delivery<ArrowRight size={18}/></button></article>)}{!received.length&&!deliveredWithoutPackages.length&&<div className="empty"><Package/><h3>No receipts recorded</h3><p>Open an incoming delivery to mark a package received.</p></div>}</div>:<div className="ops-card-grid">{shown.map(item=>{const linked=packages.filter(p=>p.data.procurement_id===item.id);return <article className="panel ops-card delivery-card" key={item.id}><StatusChip label={item.late?'Late delivery':item.status||'Awaiting delivery'} tone={item.late?'amber':'blue'} kind="delivery"/><h3>{item.name}</h3><p>{item.vendor||'Vendor not assigned'}</p><p><b>Submittal:</b> {item.submittal?`${item.submittal.number||''} ${item.submittal.title}`:'Not linked'}</p><StatusChip label={item.submittal?(item.approval_pending?'Approval pending':item.submittal.status):'Approval not confirmed'} tone={item.approval_pending?'amber':'blue'} kind="rfi"/><p><b>Lead time:</b> {item.lead_time_days==null?'Not confirmed':`${item.lead_time_days} calendar days`}</p>{item.suggested_release_date&&<p>Suggested release by {dateLabel(item.suggested_release_date)} · planning calculation</p>}<div className="arrival-dates"><span>Expected<strong>{dateLabel(item.expected_delivery_date)}</strong></span><ArrowRight size={18}/><span>Needed on site<strong>{dateLabel(item.schedule_need_date)}</strong></span></div><p className="blocker-detail">{item.linked_activities?.length?`Affects: ${item.linked_activities.join(' · ')}`:'No installation activity linked yet.'}</p><p><b>Next step:</b> {item.approval_pending?'Confirm submittal approval and release readiness with the reviewer.':!item.submittal?'Link the relevant submittal or confirm whether approval is required.':item.lead_time_days==null?'Confirm lead time with the supplier.':item.late?'Confirm the supplier commitment and review affected work.':!item.expected_delivery_date?'Confirm the expected delivery date.':'Review delivery status and outstanding packages.'}</p><small>{linked.length?`${linked.filter(p=>p.status==='received').length} of ${linked.length} packages received`:'No packages tracked yet'}</small><button className="primary" disabled={busy} onClick={()=>open('delivery',{item,packages:linked})}>Review item<ArrowRight size={18}/></button></article>})}{!shown.length&&<div className="empty"><Check/><h3>{view==='conflicts'?'No recorded delivery conflicts':'No incoming materials recorded'}</h3><p>{view==='conflicts'?'Check Incoming for deliveries and items without confirmed dates.':'Add a procurement item to connect deliveries to the schedule.'}</p></div>}</div>}</>;
+ return <>
+  <div className="toolbar"><Choices label="Procurement views" value={view} onChange={setView} options={[{value:'conflicts',label:`Late ${conflicts.length}`},{value:'incoming',label:`Coming ${incoming.length}`},{value:'received',label:`Received ${received.length+deliveredWithoutPackages.length}`}]}/><span className="toolbar-actions"><button className="primary" disabled={!canEdit||busy} onClick={()=>open('purchase')}><Plus size={18}/>Add</button></span></div>
+  {view==='received'?<div className="list">{received.map(p=><button key={p.id} className="row-card" onClick={()=>open('delivery',{item:items.find(i=>i.id===p.data.procurement_id),packages:packages.filter(x=>x.data.procurement_id===p.data.procurement_id)})}><span className="row-icon"><PackageCheck size={20}/></span><span className="row-main"><b>{p.data.label}</b><small>{items.find(i=>i.id===p.data.procurement_id)?.name||'Package'}</small></span><ArrowRight size={18}/></button>)}
+   {deliveredWithoutPackages.map(item=><button className="row-card" key={item.id} onClick={()=>open('delivery',{item,packages:[]})}><span className="row-icon"><PackageCheck size={20}/></span><span className="row-main"><b>{item.name}</b><small>{item.vendor||'Delivered'}</small></span><ArrowRight size={18}/></button>)}
+   {!received.length&&!deliveredWithoutPackages.length&&<div className="empty"><span className="empty-art"><Package size={30}/></span><h3>Nothing received yet</h3></div>}</div>
+  :<div className="list">{shown.map(item=>{
+   const linked=packages.filter(p=>p.data.procurement_id===item.id),late=daysBetween(item.expected_delivery_date,item.schedule_need_date);
+   return <button className={'row-card delivery '+(item.late?'late':'')} key={item.id} onClick={()=>open('delivery',{item,packages:linked})}>
+    <span className="row-icon">{item.late?<Siren size={20}/>:<Package size={20}/>}</span>
+    <span className="row-main"><b>{item.name}</b><small>{item.vendor||'No vendor'}</small>
+     <span className="dates"><span>{dateLabel(item.expected_delivery_date)}</span><ArrowRight size={14}/><span>need {dateLabel(item.schedule_need_date)}</span></span></span>
+    {item.late?<span className="chip prio high">{late&&late>0?`${late}d late`:'Late'}</span>:linked.length>0?<span className="chip">{linked.filter(p=>p.status==='received').length}/{linked.length} in</span>:<span className="chip">On track</span>}
+   </button>})}
+   {!shown.length&&<div className="empty"><span className="empty-art">{view==='conflicts'?<PartyPopper size={30}/>:<Package size={30}/>}</span><h3>{view==='conflicts'?'No late deliveries':'Nothing incoming'}</h3></div>}</div>}
+ </>;
 }
