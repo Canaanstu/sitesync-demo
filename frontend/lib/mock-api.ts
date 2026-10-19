@@ -19,9 +19,10 @@ function board(projectId:string):Row{return data[`GET /projects/${projectId}/ops
 export async function mockApi(path:string,body?:unknown,method?:string):Promise<any>{
  await wait();
  const m=(method||(body?'POST':'GET')).toUpperCase(),clean=path.split('?')[0],b=(body&&!(body instanceof FormData)?body:{}) as Row;
- if(clean==='/health')return {...data['GET /health'],signup_open:true};
+ if(clean==='/health')return {...data['GET /health'],signup_open:true,email_enabled:false};
  if(clean==='/auth/login'||clean==='/auth/signup'){try{localStorage.setItem(AUTH,'1')}catch{}return {ok:true}}
  if(clean==='/auth/logout'){try{localStorage.removeItem(AUTH)}catch{}return {ok:true}}
+ if(/^\/auth\/(forgot|reset|verify|resend-verification)$/.test(clean)||(clean==='/me'&&m==='DELETE'))throw new Error('Accounts and email are not available in the static preview.');
  if(clean==='/launch/requests')throw new Error('The request form is turned off on this static preview.');
  if(clean==='/me'&&!authed()){const e=new Error('Sign in to continue.');(e as any).status=401;if(typeof window!=='undefined')window.location.href=(process.env.NEXT_PUBLIC_BASE_PATH||'')+'/login/';throw e}
 

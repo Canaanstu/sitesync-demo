@@ -18,6 +18,8 @@ from .database import Base, engine, SessionLocal, get_db
 from .models import *
 from .security import *
 from .seed import initialize, seed_project, seed_workspace
+from .mailer import mail_enabled, send_email
+from .accounts import delete_workspace
 from .risk_engine import run_rules
 from .connectors import OAuthConnector, save_tokens, valid_token, Procore, Microsoft
 from .parsing import parse_table, parse_document
@@ -25,6 +27,14 @@ from .sync import sync_project, ingest_rows, generate_embeddings
 from .ai import answer
 from .operations import router as operations_router
 from .launch import router as launch_router
+
+
+def add_missing_columns():
+    """create_all never alters existing tables, so add columns introduced after a database was first created."""
+    from sqlalchemy import inspect
+    if 'email_verified' not in {c['name'] for c in inspect(engine).get_columns('users')}:
+        with engine.begin() as conn:
+            conn.execute(text('ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT TRUE'))
 
 
 _ready = False
@@ -50,6 +60,7 @@ def ensure_ready():
                     if postgres:
                         lock.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
                     Base.metadata.create_all(engine)
+                    add_missing_columns()
                 with SessionLocal() as db:
                     if not settings.demo_mode:
                         demo_user = db.scalar(select(User).where(User.email == 'demo@example.com'))
@@ -135,6 +146,23 @@ class Signup(BaseModel):
     password: str = Field(min_length=12, max_length=72)
 
 
+class EmailOnly(BaseModel):
+    email: str = Field(max_length=254)
+
+
+class TokenOnly(BaseModel):
+    token: str = Field(max_length=2000)
+
+
+class ResetBody(BaseModel):
+    token: str = Field(max_length=2000)
+    password: str = Field(min_length=12, max_length=72)
+
+
+class PasswordConfirm(BaseModel):
+    password: str = Field(max_length=72)
+
+
 class AIRequest(BaseModel):
     question: str = Field(default='', max_length=4000)
     risk_id: str | None = None
@@ -149,7 +177,7 @@ class MemberRequest(BaseModel):
 
 @app.get('/api/health')
 def health():
-    return {'status': 'ok', 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo, 'local_auto_login': settings.demo_mode and not settings.private_demo, 'signup_open': settings.open_signup}
+    return {'status': 'ok', 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo, 'local_auto_login': settings.demo_mode and not settings.private_demo, 'signup_open': settings.open_signup, 'email_enabled': mail_enabled()}
 
 
 @app.post('/api/auth/login')
@@ -184,7 +212,7 @@ def signup(body: Signup, request: Request, response: Response, db: Session = Db)
     org = Organization(name=f"{name.split()[0]}'s workspace")
     db.add(org)
     db.flush()
-    user = User(organization_id=org.id, email=email, full_name=name, role='owner', password_hash=hash_password(body.password))
+    user = User(organization_id=org.id, email=email, full_name=name, role='owner', password_hash=hash_password(body.password), email_verified=not mail_enabled())
     db.add(user)
     try:
         db.flush()
@@ -196,7 +224,78 @@ def signup(body: Signup, request: Request, response: Response, db: Session = Db)
         db.rollback()
         raise HTTPException(409, 'An account with this email already exists. Sign in instead.')
     start_session(response, user)
-    return public(user)
+    return {**public(user), 'verification_sent': (not user.email_verified) and send_verification(user)}
+
+
+def send_verification(user):
+    link = f"{settings.app_url}/verify/?token={mail_token('verify', user, 72, email=user.email)}"
+    return send_email(user.email, 'Confirm your SiteSync email', f"Hi {user.full_name or ''},\n\nConfirm your email to finish setting up SiteSync:\n{link}\n\nThis link expires in 3 days. If you did not create an account, ignore this message.")
+
+
+@app.post('/api/auth/verify')
+def verify_email(body: TokenOnly, request: Request, db: Session = Db):
+    rate_limit('verify:' + (request.client.host if request.client else 'unknown'), 20)
+    payload = read_mail_token(body.token, 'verify')
+    user = db.get(User, payload['sub'])
+    if not user or user.email != payload.get('email'):
+        raise HTTPException(400, 'This link is invalid or has expired. Request a new one.')
+    user.email_verified = True
+    audit(db, user, 'user.verify_email')
+    db.commit()
+    return {'ok': True}
+
+
+@app.post('/api/auth/resend-verification')
+def resend_verification(user=Auth):
+    rate_limit('resend:' + user.id, 3)
+    if user.email_verified:
+        return {'ok': True, 'already_verified': True}
+    if not mail_enabled():
+        raise HTTPException(503, 'Email is not set up on this deployment.')
+    if not send_verification(user):
+        raise HTTPException(502, 'The email could not be sent. Try again in a moment.')
+    return {'ok': True}
+
+
+@app.post('/api/auth/forgot')
+def forgot_password(body: EmailOnly, request: Request, db: Session = Db):
+    """Always answers the same way, so it cannot be used to discover which emails have accounts."""
+    rate_limit('forgot:' + (request.client.host if request.client else 'unknown'), 5)
+    if not mail_enabled():
+        raise HTTPException(503, 'Password reset by email is not set up on this deployment.')
+    user = db.scalar(select(User).where(User.email == body.email.lower().strip()))
+    if user:
+        link = f"{settings.app_url}/reset/?token={mail_token('reset', user, 1, pw=password_fingerprint(user))}"
+        send_email(user.email, 'Reset your SiteSync password', f"Hi {user.full_name or ''},\n\nUse this link to choose a new password:\n{link}\n\nIt works once and expires in 1 hour. If you did not ask for this, ignore this message; your password has not changed.")
+    return {'ok': True}
+
+
+@app.post('/api/auth/reset')
+def reset_password(body: ResetBody, request: Request, db: Session = Db):
+    rate_limit('reset:' + (request.client.host if request.client else 'unknown'), 10)
+    payload = read_mail_token(body.token, 'reset')
+    user = db.get(User, payload['sub'])
+    if not user or payload.get('pw') != password_fingerprint(user):
+        raise HTTPException(400, 'This link is invalid or has expired. Request a new one.')
+    user.password_hash = hash_password(body.password)
+    user.email_verified = True  # they just proved they control the inbox
+    audit(db, user, 'user.reset_password')
+    db.commit()
+    return {'ok': True}
+
+
+@app.delete('/api/me')
+def delete_account(body: PasswordConfirm, request: Request, response: Response, db: Session = Db, user=Auth):
+    """Delete the signed-in user's private workspace and everything in it."""
+    rate_limit('delete:' + user.id, 5)
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(403, 'Password is incorrect.')
+    if user.email == 'demo@example.com' or db.scalar(select(func.count()).select_from(User).where(User.organization_id == user.organization_id)) > 1:
+        raise HTTPException(403, 'Shared workspaces cannot be deleted here. Ask the workspace owner.')
+    delete_workspace(db, user.organization_id)
+    db.commit()
+    response.delete_cookie('session', path='/')
+    return {'ok': True}
 
 
 @app.post('/api/auth/logout')

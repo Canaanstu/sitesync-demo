@@ -13,9 +13,9 @@ function Floor({i,ghost=false}:{i:number,ghost?:boolean}){
 }
 
 // A CSS-3D building that gains a floor every FLOOR_XP experience points. Drag to turn it.
-export function Tower(){
- const g=useGame(),floors=Math.min(MAX_FLOORS,Math.floor(g.xp/FLOOR_XP)),done=floors>=MAX_FLOORS;
- const toNext=done?0:FLOOR_XP-(g.xp%FLOOR_XP);
+export function Tower({xp,compact=false}:{xp?:number,compact?:boolean}={}){
+ const g=useGame(),total=xp??g.xp,floors=Math.min(MAX_FLOORS,Math.floor(total/FLOOR_XP)),done=floors>=MAX_FLOORS;
+ const toNext=done?0:FLOOR_XP-(total%FLOOR_XP);
  const stage=useRef<HTMLDivElement>(null),angle=useRef(-32),drag=useRef<{x:number,a:number}|null>(null);
  useEffect(()=>{
   const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;let raf=0;
@@ -23,9 +23,9 @@ export function Tower(){
   raf=requestAnimationFrame(tick);return()=>cancelAnimationFrame(raf);
  },[]);
  const crane=floors*H+90;
- return <section className="tower-card" aria-label={`Your tower: ${floors} of ${MAX_FLOORS} floors`}>
+ return <section className={'tower-card'+(compact?' compact':'')} aria-label={`Your tower: ${floors} of ${MAX_FLOORS} floors`}>
   <div className="tower-scene" onPointerDown={e=>{drag.current={x:e.clientX,a:angle.current};e.currentTarget.setPointerCapture(e.pointerId)}} onPointerMove={e=>{if(drag.current)angle.current=drag.current.a+(e.clientX-drag.current.x)*.6}} onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>
-   <div className="tw-stage" ref={stage} style={{['--k' as string]:Math.min(1,250/(floors*H+120))} as React.CSSProperties}>
+   <div className="tw-stage" ref={stage} style={{['--k' as string]:Math.min(1,(compact?160:250)/(floors*H+120))} as React.CSSProperties}>
     <div className="tw-plane tw-ground"/><div className="tw-plane tw-base"/>
     {Array.from({length:floors},(_,i)=><Floor key={i} i={i}/>)}
     {!done&&<Floor i={floors} ghost/>}

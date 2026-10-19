@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
-from sqlalchemy import Column, String, Text, Integer, Float, Boolean, JSON, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Text, Integer, Float, Boolean, JSON, ForeignKey, UniqueConstraint, true
 from pgvector.sqlalchemy import Vector
 from .database import Base
 
@@ -40,6 +40,8 @@ class User(Identity, Base):
     full_name = Column(String)
     role = Column(String, default='member')
     password_hash = Column(String, nullable=False)
+    # Existing accounts predate verification, so the column defaults to verified; sign-up sets it explicitly.
+    email_verified = Column(Boolean, nullable=False, default=False, server_default=true())
 
 
 class Project(Identity, Base):
