@@ -14,7 +14,7 @@ import {QuestCard,TypeChip,PriorityChip,levelOf,nextStep,xpFor,ProjectDirectory,
 import {ProjectAssistant} from './project-assistant';
 import {ChoiceField,Choices,FileDrop,StatusChip} from './field-controls';
 import {Celebrations,GameBar,Ring} from './game-ui';
-import {award} from '../lib/game';
+import {award,setGameUser} from '../lib/game';
 import { useDialog } from '../lib/use-dialog';
 
 const sourceLabel = (key:string) => ({ball_in_court:'Responsible party',required_on_site_date:'Required delivery date',sender_email:'Sender email',percent_complete:'Progress (%)'}[key] || key.replaceAll('_',' '));
@@ -40,7 +40,7 @@ export function Workspace() {
   useEffect(()=>{if(health.data?.local_auto_login&&path==='/login'){setEmail('demo@example.com');setPassword('DemoProject2026!')}},[health.data?.local_auto_login,path]);
   useEffect(()=>{if(authMode==='signup')setInviteCode((new URLSearchParams(window.location.search).get('invite')||'').slice(0,40))},[authMode]);
   useEffect(()=>{setAuthDone('');setError('');if(authMode==='reset'||authMode==='verify'){const t=new URLSearchParams(window.location.search).get('token')||'';setToken(t);if(authMode==='verify'){if(!t){setError('This link is missing its token. Request a new email.');return}api('/auth/verify',{token:t}).then(()=>setAuthDone('Email confirmed. You are all set.')).catch(e=>setError((e as Error).message))}}},[authMode]);
-  const me=useQuery({queryKey:['me'],queryFn:()=>api('/me'),enabled:!isLogin,retry:false});
+  const me=useQuery({queryKey:['me'],queryFn:async()=>{const m=await api('/me');if(m?.id)setGameUser(m.id);return m},enabled:!isLogin,retry:false});
   const org=useQuery({queryKey:['org'],queryFn:()=>api('/organizations/current'),enabled:!!me.data});
   const projects=useQuery({queryKey:['projects'],queryFn:()=>api<Row[]>('/projects'),enabled:!!me.data,refetchInterval:30000});
   const project=useQuery({queryKey:['project',projectId],queryFn:()=>api(`/projects/${projectId}`),enabled:!!projectId&&!!me.data});
