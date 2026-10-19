@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import hashlib
 import secrets
 import threading
+import time
 import json
 from pathlib import Path
 from typing import Literal
@@ -49,7 +50,9 @@ _INIT_LOCK_KEY = 7302026
 
 def ensure_ready():
     """Create tables and seed once per process. Serverless hosts may skip ASGI lifespan, so the first request also calls this.
-    A Postgres advisory lock stops simultaneous cold starts from seeding the same database twice."""
+    On Postgres a transaction-scoped advisory lock stops simultaneous cold starts from seeding the same database twice.
+    It must be transaction-scoped: pooled hosts (Neon) share server connections between clients, so a session-level lock can be
+    left behind and then block every later cold start for as long as that connection lives."""
     global _ready
     if _ready:
         return
@@ -57,13 +60,24 @@ def ensure_ready():
         if _ready:
             return
         postgres = engine.dialect.name == 'postgresql'
-        with engine.connect().execution_options(isolation_level='AUTOCOMMIT') as lock:
+        with engine.connect() as lock:
             if postgres:
-                lock.execute(text('SELECT pg_advisory_lock(:k)'), {'k': _INIT_LOCK_KEY})
+                deadline = time.time() + 20
+                while not lock.execute(text('SELECT pg_try_advisory_xact_lock(:k)'), {'k': _INIT_LOCK_KEY}).scalar():
+                    if time.time() > deadline:
+                        # Another instance has been initializing for too long. The schema is normally in place already, so carry on
+                        # instead of making every request wait.
+                        from sqlalchemy import inspect
+                        if not inspect(engine).has_table('users'):
+                            raise RuntimeError('The database is still being set up. Try again in a moment.')
+                        _ready = True
+                        return
+                    time.sleep(0.5)
             try:
                 if settings.demo_mode:
                     if postgres:
-                        lock.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+                        with engine.begin() as conn:
+                            conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
                     Base.metadata.create_all(engine)
                     add_missing_columns()
                 with SessionLocal() as db:
@@ -73,8 +87,7 @@ def ensure_ready():
                             raise RuntimeError('Use a fresh live database; the known demo account must not be enabled in live mode.')
                     initialize(db)
             finally:
-                if postgres:
-                    lock.execute(text('SELECT pg_advisory_unlock(:k)'), {'k': _INIT_LOCK_KEY})
+                lock.rollback()  # ends the transaction, which releases the advisory lock
         _ready = True
 
 
