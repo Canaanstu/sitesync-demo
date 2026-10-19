@@ -5,15 +5,12 @@ import {useQueries} from '@tanstack/react-query';
 import {UserPlus,Users,ShieldCheck,FolderLock,ArrowRight,Bot,CalendarDays,Construction,Search,CircleHelp,FileText,Flame,Mail,MessageSquare,Package,Pin,Receipt,Target,ClipboardList,Check,Pointer,PenLine,Trophy} from 'lucide-react';
 import type {ReactNode} from 'react';
 import {api,Row} from '../lib/api';
-import {Tower} from './tower';
-import {Ring} from './game-ui';
-import {DAILY_GOAL,award,readGame,useGame} from '../lib/game';
+import {Ring} from './ring';
 
 export const CAT:Record<string,{icon:ReactNode,label:string}>={
  rfi:{icon:<CircleHelp size={20}/>,label:'RFI'},submittal:{icon:<ClipboardList size={20}/>,label:'Submittal'},email_followup:{icon:<Mail size={20}/>,label:'Email'},email:{icon:<Mail size={20}/>,label:'Email'},
  rfp:{icon:<MessageSquare size={20}/>,label:'Pricing'},change_order:{icon:<Receipt size={20}/>,label:'Change'},co:{icon:<Receipt size={20}/>,label:'Change'},procurement:{icon:<Package size={20}/>,label:'Delivery'},schedule:{icon:<CalendarDays size={20}/>,label:'Schedule'}
 };
-export const xpFor=(severity:string)=>severity==='critical'||severity==='high'?50:severity==='medium'?30:15;
 export const levelOf=(severity:string)=>['critical','high'].includes(severity)?'high':severity==='medium'?'medium':'low';
 
 // Kept for the assistant drawer.
@@ -38,7 +35,6 @@ export function TaskCard({risk,onOpen,index=0}:{risk:Row,onOpen:()=>void,index?:
  return <button className={'task '+lvl} style={{animationDelay:index*50+'ms'}} onClick={onOpen}>
   <span className="task-icon" aria-hidden="true">{c.icon}</span>
   <span className="task-body"><b>{risk.title}</b><span className="task-meta"><PriorityChip value={risk.severity}/><small>{c.label}{risk.due_date?` · due ${new Date(risk.due_date.slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}`:''}</small></span></span>
-  <span className="task-reward">+{xpFor(risk.severity)}<small>XP</small></span>
  </button>;
 }
 
@@ -76,22 +72,14 @@ function useJumps(projects:Row[]):Jump[]{
 }
 
 export function DailyOverview({projects,name,company}:{projects:Row[],name?:string,company?:string}){
- const g=useGame(),total=projects.reduce((n,p)=>n+p.risk_count,0),high=projects.reduce((n,p)=>n+p.high_risks,0);
+ const total=projects.reduce((n,p)=>n+p.risk_count,0),high=projects.reduce((n,p)=>n+p.high_risks,0);
  const jumps=useJumps(projects);
- // One small reward per day for opening the app; it also keeps the streak alive.
- useEffect(()=>{if(readGame().lastDay!==new Date().toLocaleDateString('en-CA'))award(10,'Daily check-in')},[]);
  return <>
   <div className="home-grid">
    <section className="hero">
     <div>{company&&<small className="hero-org">{company}</small>}<h1>{greeting()}{name?`, ${name.split(' ')[0]}`:''}</h1>
      <p className="hero-sub">{total?<><b>{total}</b> to tackle{high>0&&<> · <b>{high}</b> high priority</>}</>:'Nothing waiting.'}</p></div>
-    <div className="goal"><Target size={20}/><span>Daily goal</span>
-     <div className="bar" role="progressbar" aria-label="Daily goal" aria-valuemin={0} aria-valuemax={DAILY_GOAL} aria-valuenow={Math.min(DAILY_GOAL,g.doneToday)}><b style={{width:Math.min(100,g.doneToday/DAILY_GOAL*100)+'%'}}/></div>
-     <strong>{Math.min(g.doneToday,DAILY_GOAL)}/{DAILY_GOAL}</strong>
-     {g.doneToday>=DAILY_GOAL&&<span className="chip streak"><Flame size={14}/>Goal hit</span>}
-    </div>
    </section>
-   <Tower/>
   </div>
   {jumps.length>0&&<><div className="section-title"><h2>Jump to</h2></div>
    <div className="jumps">{jumps.map(j=><Link key={j.key} href={j.href} className="jump"><span className="row-icon">{j.icon}</span><span className="row-main"><b>{j.title}</b><small>{j.sub}</small></span>{j.count!=null&&<span className="chip prio high">{j.count}</span>}<ArrowRight size={16}/></Link>)}</div></>}
@@ -103,7 +91,7 @@ export function ProjectDirectory({projects}:{projects:Row[]}){
 }
 
 const CREW_GUIDE:[ReactNode,string,ReactNode][]=[
- [<Users size={22} key="a"/>,'Your company is your crew','Everyone who joins your company shares its projects, tasks, schedules, materials and RFIs. When a teammate clears a task, it is cleared for everyone. Your XP and tower stay personal.'],
+ [<Users size={22} key="a"/>,'Your company is your crew','Everyone who joins your company shares its projects, tasks, schedules, materials and RFIs. When a teammate clears a task, it is cleared for everyone.'],
  [<UserPlus size={22} key="b"/>,'Invite a teammate by email','Open Settings, then Company, enter their email and choose Send invite. New people get a link that creates their account inside your company. People who already have an account get a link that opens the join dialog after they sign in. You can also copy the invite link or code and send it yourself.'],
  [<ShieldCheck size={22} key="c"/>,'Roles',<ul className="role-list" key="c2"><li><b>Owner</b> · full control, can add administrators.</li><li><b>Admin</b> · invites people, manages project access and settings.</li><li><b>Member</b> · works tasks, schedules, materials and RFIs.</li><li><b>Viewer</b> · can look but not change anything.</li></ul>],
  [<FolderLock size={22} key="d"/>,'Joining from an existing account','Someone who already has an account joins from Settings with the company code. This only works while they are alone in their own workspace, and it replaces that workspace (just its sample projects) with the company one. A code that was shared too widely can be replaced with New code, and the old one stops working.'],
@@ -112,6 +100,6 @@ const CREW_GUIDE:[ReactNode,string,ReactNode][]=[
 ];
 
 export function Tutorial(){
- const steps:[ReactNode,string,string][]=[[<Pointer size={26} key="a"/>,'Pick a task','Open a project. Tap a card.'],[<PenLine size={26} key="b"/>,'Review the draft','Edit it. Nothing sends without you.'],[<Trophy size={26} key="c"/>,'Clear it','Earn XP. Keep your streak.']];
+ const steps:[ReactNode,string,string][]=[[<Pointer size={26} key="a"/>,'Pick a task','Open a project. Tap a card.'],[<PenLine size={26} key="b"/>,'Review the draft','Edit it. Nothing sends without you.'],[<Check size={26} key="c"/>,'Clear it','Mark it done when it is handled.']];
  return <><h1>How it works</h1><div className="steps">{steps.map(([e,t,d],i)=><div className="step" key={String(t)}><span className="step-n">{i+1}</span><span className="step-emoji">{e}</span><b>{t}</b><small>{d}</small></div>)}</div><h2 id="crew">Working with your crew</h2><div className="guide">{CREW_GUIDE.map(([icon,title,body],i)=><div className="guide-item" key={i}><span className="row-icon">{icon}</span><div><h3>{title}</h3>{typeof body==='string'?<p>{body}</p>:body}</div></div>)}</div><Link className="btn primary" href="/dashboard">Let’s go <ArrowRight size={18}/></Link></>;
 }

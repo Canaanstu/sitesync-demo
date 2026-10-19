@@ -2,20 +2,19 @@
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
 import {ThemeToggle} from './theme-toggle';
-import {ArrowRight,Bot,CalendarDays,Check,CircleHelp,ClipboardList,Mail,Package,Plus,Search,ShieldCheck,Trophy,Flame} from 'lucide-react';
+import {ArrowRight,Bot,CalendarDays,Check,CircleHelp,ClipboardList,Mail,Package,Plus,Search,ShieldCheck} from 'lucide-react';
 import {BlueprintIcon} from './icons';
 import {Logo} from './logo';
 import {Splash} from './splash';
-import {Tower} from './tower';
 import {PriorityChip} from './project-hub';
 import {api} from '../lib/api';
 
 // Illustrative sample items for the interactive preview. Nothing here is real project data.
 const SAMPLE=[
- {t:'Lighting controls may miss the required date',cat:'Delivery',level:'high',icon:Package,next:'Ask the supplier to confirm release and delivery. Compare it with the date the work needs it.',xp:50},
- {t:'RFI 042 may affect ceiling close',cat:'RFI',level:'high',icon:CircleHelp,next:'Ask the reviewer for an answer and confirm whether the ceiling work must wait.',xp:50},
- {t:'Millwork ship date slipped five days',cat:'Email',level:'medium',icon:Mail,next:'Confirm the new date with the sender and link it to the install activity.',xp:30},
- {t:'Electrical rough-in inspection needs a date',cat:'Inspection',level:'low',icon:Search,next:'Record the appointment so it stops holding the next activity.',xp:15},
+ {t:'Lighting controls may miss the required date',cat:'Delivery',level:'high',icon:Package,next:'Ask the supplier to confirm release and delivery. Compare it with the date the work needs it.'},
+ {t:'RFI 042 may affect ceiling close',cat:'RFI',level:'high',icon:CircleHelp,next:'Ask the reviewer for an answer and confirm whether the ceiling work must wait.'},
+ {t:'Millwork ship date slipped five days',cat:'Email',level:'medium',icon:Mail,next:'Confirm the new date with the sender and link it to the install activity.'},
+ {t:'Electrical rough-in inspection needs a date',cat:'Inspection',level:'low',icon:Search,next:'Record the appointment so it stops holding the next activity.'},
 ];
 
 function useReveal(){
@@ -28,19 +27,17 @@ function useReveal(){
 }
 
 function LiveDemo({cta}:{cta:{href:string,label:string}}){
- const [done,setDone]=useState<number[]>([]),[open,setOpen]=useState<number|null>(null),[pop,setPop]=useState('');
- const xp=160+done.reduce((n,i)=>n+80,0),cleared=done.length===SAMPLE.length;
- function finish(i:number){setDone(d=>[...d,i]);setPop(`+${SAMPLE[i].xp} XP`);setTimeout(()=>setPop(''),1400);setOpen(SAMPLE.findIndex((_,n)=>n!==i&&!done.includes(n)));}
+ const [done,setDone]=useState<number[]>([]),[open,setOpen]=useState<number|null>(null);
+ const cleared=done.length===SAMPLE.length;
+ function finish(i:number){setDone(d=>[...d,i]);setOpen(SAMPLE.findIndex((_,n)=>n!==i&&!done.includes(n)));}
  return <div className="live" id="live">
-  <Tower xp={xp} compact/>
-  {pop&&<div className="live-pop" aria-live="polite">{pop}</div>}
   <div className="live-tasks" role="list" aria-label="Sample tasks">
    {SAMPLE.map((q,i)=>{const isDone=done.includes(i),isOpen=open===i&&!isDone;return <div role="listitem" key={q.t} className={'live-task '+q.level+(isDone?' done':'')}>
-    <button className="live-row" aria-expanded={isOpen} disabled={isDone} onClick={()=>setOpen(isOpen?null:i)}><span className="row-icon">{isDone?<Check size={20}/>:<q.icon size={20}/>}</span><span className="row-main"><b>{q.t}</b><span className="task-meta"><PriorityChip value={q.level}/><small>{q.cat}</small></span></span><span className="task-reward">+{q.xp}<small>XP</small></span></button>
+    <button className="live-row" aria-expanded={isOpen} disabled={isDone} onClick={()=>setOpen(isOpen?null:i)}><span className="row-icon">{isDone?<Check size={20}/>:<q.icon size={20}/>}</span><span className="row-main"><b>{q.t}</b><span className="task-meta"><PriorityChip value={q.level}/><small>{q.cat}</small></span></span></button>
     {isOpen&&<div className="live-detail"><p>{q.next}</p><div className="ops-actions"><button className="primary small" onClick={()=>finish(i)}><Check size={14}/>Mark done</button></div></div>}
    </div>})}
   </div>
-  <div className="live-foot">{cleared?<><b>Tower complete.</b><Link className="button primary" href={cta.href}>{cta.label}<ArrowRight size={16}/></Link></>:<small>Illustrative preview. Tap a task, mark it done, and watch the tower grow.</small>}{done.length>0&&!cleared&&<button className="ghost small" onClick={()=>{setDone([]);setOpen(null)}}>Reset</button>}</div>
+  <div className="live-foot">{cleared?<><b>All cleared.</b><Link className="button primary" href={cta.href}>{cta.label}<ArrowRight size={16}/></Link></>:<small>Illustrative preview. Tap a task and mark it done.</small>}{done.length>0&&!cleared&&<button className="ghost small" onClick={()=>{setDone([]);setOpen(null)}}>Reset</button>}</div>
  </div>;
 }
 
@@ -97,10 +94,6 @@ export function Landing(){
     <div className="feature-grid">{FEATURES.map((f,i)=><article key={f.t} className="feature reveal" style={{transitionDelay:i*60+'ms'}}><span className="row-icon"><f.icon size={22}/></span><h3>{f.t}</h3><p>{f.d}</p></article>)}</div>
    </section>
 
-   <section className="site-band reveal">
-    <div><span className="eyebrow-tag light"><i/>Make it a habit</span><h2>Finish tasks. Earn XP. Build the tower.</h2><p>A daily goal, a streak and a tower that grows floor by floor. Small rewards for the follow-ups that usually slip.</p></div>
-    <div className="band-chips"><span><Flame size={18}/>Day streak</span><span><Trophy size={18}/>XP and levels</span><span><BlueprintIcon size={18}/>Daily goal</span></div>
-   </section>
 
    <section className="site-section" id="faq">
     <div className="section-head reveal"><span className="eyebrow-tag"><i/>Good questions</span><h2>Before you start.</h2></div>
