@@ -47,6 +47,15 @@ export async function mockApi(path:string,body?:unknown,method?:string):Promise<
   if(x){x.data={...x.data,...b};x.status=b.status||x.status;if(x.status==='received')x.data.received_at=new Date().toISOString().slice(0,10)}
   return x||{}
  }
+ const chat=clean.match(/^\/projects\/([^/]+)\/chat(?:\/(members|unread|read))?$/);
+ if(chat){
+  const key=`GET /projects/${chat[1]}/chat`,me=data['GET /me'];
+  if(chat[2]==='members')return [{id:me.id,name:me.full_name||'You'}];
+  if(chat[2]==='unread')return {unread:0,mentions:0};
+  if(chat[2]==='read')return {ok:true};
+  if(m==='POST'){const f=body instanceof FormData?body:null,msg={id:'c'+Date.now(),user_id:me.id,author:'You',body:String(f?.get('body')??b.body??'').trim(),mentions:[],files:[],created_at:new Date().toISOString()};data[key]=[...(data[key]||[]),msg];return msg}
+  return data[key]||[]
+ }
  if(m==='POST'&&/\/ai\/chat$/.test(clean)){
   const pid=clean.split('/')[2],key=`GET /projects/${pid}/ai/history`,now=new Date().toISOString();
   data[key]=[...(data[key]||[]),{id:'u'+Date.now(),role:'user',content:b.question,sources:[],created_at:now},{id:'a'+Date.now(),role:'assistant',content:'Project AI answers are turned off in this static preview. In the live app, answers cite the schedule, RFIs, submittals and deliveries behind them.',sources:[],created_at:now}];

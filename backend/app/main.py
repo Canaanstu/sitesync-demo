@@ -6,12 +6,12 @@ import time
 import json
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, Depends, HTTPException, Request, Response, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, Request, Response, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, delete
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
@@ -41,6 +41,14 @@ def add_missing_columns():
         with engine.begin() as conn:
             conn.execute(text('ALTER TABLE organizations ADD COLUMN invite_code VARCHAR'))
             conn.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ix_organizations_invite_code ON organizations (invite_code)'))
+    # chat_messages shipped without these two columns during development
+    chat_cols = {c['name'] for c in inspect(engine).get_columns('chat_messages')} if inspect(engine).has_table('chat_messages') else None
+    if chat_cols is not None:
+        with engine.begin() as conn:
+            if 'mentions' not in chat_cols:
+                conn.execute(text('ALTER TABLE chat_messages ADD COLUMN mentions JSON'))
+            if 'edited_at' not in chat_cols:
+                conn.execute(text('ALTER TABLE chat_messages ADD COLUMN edited_at VARCHAR'))
 
 
 _ready = False
@@ -820,6 +828,146 @@ def ai_request(project_id: str, task: str, body: AIRequest, db: Session = Db, us
     audit(db, user, 'ai.' + task, {'project_id': project_id, 'mode': result['mode']})
     db.commit()
     return result
+
+
+CHAT_FILE_TYPES = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf', '.txt': 'text/plain',
+                   '.csv': 'text/csv', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+CHAT_FILE_LIMIT = 5 * 1024 * 1024
+
+
+class ChatEdit(BaseModel):
+    body: str = Field(max_length=2000)
+    mentions: list[str] = Field(default_factory=list, max_length=20)
+
+
+def chat_members(db, project_id, org_id):
+    """People who can open this project: owners and admins, plus members granted it."""
+    granted = select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)
+    return list(db.scalars(select(User).where(User.organization_id == org_id, (User.role.in_(['owner', 'admin'])) | (User.id.in_(granted))).order_by(User.full_name)))
+
+
+def display_name(u):
+    return (u.full_name or u.email.split('@')[0]) if u else 'Former member'
+
+
+def chat_view(db, m, author):
+    files = db.scalars(select(ChatFile).where(ChatFile.message_id == m.id)).all()
+    return {'id': m.id, 'user_id': m.user_id, 'author': display_name(author), 'body': m.body, 'mentions': m.mentions or [], 'edited_at': m.edited_at, 'created_at': m.created_at,
+            'files': [{'id': f.id, 'filename': f.filename, 'content_type': f.content_type, 'size': f.size} for f in files]}
+
+
+def clean_mentions(db, project_id, user, ids, body):
+    """Keep only teammates on this project whose @name is actually in the message."""
+    people = {u.id: u for u in chat_members(db, project_id, user.organization_id)}
+    return [i for i in dict.fromkeys(ids) if i in people and '@' + display_name(people[i]) in body]
+
+
+@app.get('/api/projects/{project_id}/chat')
+def chat_history(project_id: str, db: Session = Db, user=Auth):
+    project_access(db, user, project_id)
+    rows = db.execute(select(ChatMessage, User).join(User, User.id == ChatMessage.user_id, isouter=True).where(ChatMessage.project_id == project_id).order_by(ChatMessage.created_at.desc()).limit(200)).all()
+    return [chat_view(db, m, u) for m, u in reversed(rows)]
+
+
+@app.get('/api/projects/{project_id}/chat/members')
+def chat_people(project_id: str, db: Session = Db, user=Auth):
+    project_access(db, user, project_id)
+    return [{'id': u.id, 'name': display_name(u)} for u in chat_members(db, project_id, user.organization_id)]
+
+
+@app.get('/api/projects/{project_id}/chat/unread')
+def chat_unread(project_id: str, db: Session = Db, user=Auth):
+    project_access(db, user, project_id)
+    seen = db.get(ChatRead, (project_id, user.id))
+    since = seen.last_read_at if seen else user.created_at
+    rows = db.scalars(select(ChatMessage).where(ChatMessage.project_id == project_id, ChatMessage.user_id != user.id, ChatMessage.created_at > since).limit(100)).all()
+    return {'unread': len(rows), 'mentions': sum(1 for m in rows if user.id in (m.mentions or []))}
+
+
+@app.post('/api/projects/{project_id}/chat/read')
+def chat_mark_read(project_id: str, db: Session = Db, user=Auth):
+    project_access(db, user, project_id)
+    seen = db.get(ChatRead, (project_id, user.id))
+    if seen:
+        seen.last_read_at = now()
+    else:
+        db.add(ChatRead(project_id=project_id, user_id=user.id, last_read_at=now()))
+    db.commit()
+    return {'ok': True}
+
+
+@app.post('/api/projects/{project_id}/chat')
+async def chat_send(project_id: str, body: str = Form(''), mentions: str = Form(''), file: UploadFile | None = File(None), db: Session = Db, user=Auth):
+    project_access(db, user, project_id)
+    text_ = body.strip()
+    if len(text_) > 2000:
+        raise HTTPException(422, 'Messages can be up to 2000 characters.')
+    data = b''
+    if file and file.filename:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in CHAT_FILE_TYPES:
+            raise HTTPException(422, 'Attach a photo, PDF, text, CSV, Word or Excel file.')
+        data = await file.read(CHAT_FILE_LIMIT + 1)
+        if len(data) > CHAT_FILE_LIMIT:
+            raise HTTPException(413, 'Attachments can be up to 5 MB.')
+    if not text_ and not data:
+        raise HTTPException(422, 'Write a message first.')
+    rate_limit('chat:' + user.id, 60)
+    m = ChatMessage(project_id=project_id, user_id=user.id, body=text_, mentions=clean_mentions(db, project_id, user, [i for i in mentions.split(',') if i], text_))
+    db.add(m)
+    db.flush()
+    if data:
+        name = Path(file.filename).name[:120]
+        db.add(ChatFile(project_id=project_id, message_id=m.id, filename=name, content_type=CHAT_FILE_TYPES[Path(name).suffix.lower()], size=len(data), data=data))
+    seen = db.get(ChatRead, (project_id, user.id))
+    if seen:
+        seen.last_read_at = m.created_at
+    else:
+        db.add(ChatRead(project_id=project_id, user_id=user.id, last_read_at=m.created_at))
+    db.commit()
+    return chat_view(db, m, user)
+
+
+def own_chat_message(db, user, project_id, message_id, admin_ok=False):
+    m = db.get(ChatMessage, message_id)
+    if not m or m.project_id != project_id:
+        raise HTTPException(404, 'Message not found.')
+    if m.user_id != user.id and not (admin_ok and user.role in ('owner', 'admin')):
+        raise HTTPException(403, 'You can only change your own messages.')
+    return m
+
+
+@app.patch('/api/projects/{project_id}/chat/{message_id}')
+def chat_edit(project_id: str, message_id: str, body: ChatEdit, db: Session = Db, user=Auth):
+    project_access(db, user, project_id)
+    m = own_chat_message(db, user, project_id, message_id)
+    text_ = body.body.strip()
+    if not text_ and not db.scalar(select(func.count()).select_from(ChatFile).where(ChatFile.message_id == m.id)):
+        raise HTTPException(422, 'A message cannot be empty. Delete it instead.')
+    m.body, m.edited_at = text_, now()
+    m.mentions = clean_mentions(db, project_id, user, body.mentions, text_)
+    db.commit()
+    return chat_view(db, m, user)
+
+
+@app.delete('/api/projects/{project_id}/chat/{message_id}')
+def chat_delete(project_id: str, message_id: str, db: Session = Db, user=Auth):
+    project_access(db, user, project_id)
+    m = own_chat_message(db, user, project_id, message_id, admin_ok=True)
+    db.execute(delete(ChatFile).where(ChatFile.message_id == m.id))
+    db.delete(m)
+    db.commit()
+    return {'ok': True}
+
+
+@app.get('/api/projects/{project_id}/chat/files/{file_id}')
+def chat_file(project_id: str, file_id: str, db: Session = Db, user=Auth):
+    project_access(db, user, project_id)
+    f = db.get(ChatFile, file_id)
+    if not f or f.project_id != project_id:
+        raise HTTPException(404, 'File not found.')
+    inline = f.content_type.startswith('image/')
+    return Response(f.data, media_type=f.content_type, headers={'Content-Disposition': f'{"inline" if inline else "attachment"}; filename="{f.filename.replace(chr(34), "")}"'})
 
 
 @app.get('/api/organizations/usage')

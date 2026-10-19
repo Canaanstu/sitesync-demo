@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
-from sqlalchemy import Column, String, Text, Integer, Float, Boolean, JSON, ForeignKey, UniqueConstraint, true
+from sqlalchemy import Column, String, Text, Integer, Float, Boolean, JSON, ForeignKey, UniqueConstraint, LargeBinary, true
 from pgvector.sqlalchemy import Vector
 from .database import Base
 
@@ -185,6 +185,34 @@ class Message(Identity, Base):
     role = Column(String)
     content = Column(Text)
     sources = Column(JSON, default=list)
+
+
+class ChatMessage(Identity, Base):
+    """Crew chat: messages between the people who share a project, separate from the private AI assistant history."""
+    __tablename__ = 'chat_messages'
+    project_id = Column(String, ForeignKey('projects.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = Column(String, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    body = Column(Text, nullable=False, default='')
+    mentions = Column(JSON, default=list)
+    edited_at = Column(String)
+
+
+class ChatFile(Identity, Base):
+    __tablename__ = 'chat_files'
+    project_id = Column(String, ForeignKey('projects.id', ondelete='CASCADE'), nullable=False, index=True)
+    message_id = Column(String, ForeignKey('chat_messages.id', ondelete='CASCADE'), nullable=False, index=True)
+    filename = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    size = Column(Integer, nullable=False)
+    data = Column(LargeBinary, nullable=False)
+
+
+class ChatRead(Base):
+    """When each person last opened a project's chat, so unread counts are per person."""
+    __tablename__ = 'chat_reads'
+    project_id = Column(String, ForeignKey('projects.id', ondelete='CASCADE'), primary_key=True)
+    user_id = Column(String, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    last_read_at = Column(String, nullable=False)
 
 
 class SyncJob(Identity, Base):

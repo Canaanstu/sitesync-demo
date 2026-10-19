@@ -130,3 +130,52 @@ def test_invite_by_email_for_new_and_existing_people(monkeypatch):
             assert plain.post('/api/organizations/invites', json={'email': 'x@y.test'}).status_code == 403
         monkeypatch.setattr(app_main, 'send_email', lambda *a: False)
         assert owner.post('/api/organizations/invites', json={'email': 'fail@co.test'}).status_code == 502
+
+
+def test_crew_chat_messages_unread_mentions_edit_delete_and_files():
+    with TestClient(app) as owner, TestClient(app) as mate, TestClient(app) as outsider:
+        signup(owner, 'chat-owner@co.test', 'Chat Owner', company='Chat Co')
+        code = owner.get('/api/organizations/current').json()['invite_code']
+        signup(mate, 'chat-mate@co.test', 'Chat Mate', invite_code=code)
+        signup(outsider, 'chat-out@else.test', 'Out Sider')
+        pid = owner.post('/api/projects', json={'name': 'Chat Tower'}).json()['id']
+        url = f'/api/projects/{pid}/chat'
+        assert owner.get(url).json() == []
+        assert owner.post(url, data={'body': '   '}).status_code == 422
+        assert owner.post(url, data={'body': 'x' * 2001}).status_code == 422
+        people = {p['name']: p['id'] for p in owner.get(url + '/members').json()}
+        assert 'Chat Mate' in people and 'Chat Owner' in people
+        sent = owner.post(url, data={'body': 'Pour at 7am @Chat Mate', 'mentions': people['Chat Mate'] + ',not-a-user'})
+        assert sent.status_code == 200 and sent.json()['mentions'] == [people['Chat Mate']]
+        # a mention is only kept when the name is really in the text
+        assert owner.post(url, data={'body': 'no tag', 'mentions': people['Chat Mate']}).json()['mentions'] == []
+        # unread: only other people's messages count, and reading clears it
+        assert owner.get(url + '/unread').json() == {'unread': 0, 'mentions': 0}
+        assert mate.get(url + '/unread').json() == {'unread': 2, 'mentions': 1}
+        assert mate.post(url + '/read').status_code == 200
+        assert mate.get(url + '/unread').json() == {'unread': 0, 'mentions': 0}
+        assert mate.post(url, data={'body': 'On it'}).status_code == 200
+        assert owner.get(url + '/unread').json()['unread'] == 1
+        # attachments
+        pic = mate.post(url, data={'body': 'photo'}, files={'file': ('slab.png', b'\x89PNG fake', 'image/png')}).json()
+        assert pic['files'][0]['filename'] == 'slab.png'
+        got = owner.get(f"{url}/files/{pic['files'][0]['id']}")
+        assert got.status_code == 200 and got.content == b'\x89PNG fake' and got.headers['content-type'] == 'image/png'
+        assert mate.post(url, data={'body': 'x'}, files={'file': ('evil.html', b'<script>', 'text/html')}).status_code == 422
+        assert mate.post(url, data={}, files={'file': ('big.pdf', b'0' * (5 * 1024 * 1024 + 1), 'application/pdf')}).status_code == 413
+        doc = mate.post(url, data={}, files={'file': ('plan.pdf', b'%PDF', 'application/pdf')}).json()
+        assert 'attachment' in owner.get(f"{url}/files/{doc['files'][0]['id']}").headers['content-disposition']
+        # edit and delete are limited to the author (admins may delete)
+        mid = sent.json()['id']
+        assert mate.patch(f'{url}/{mid}', json={'body': 'hijack'}).status_code == 403
+        assert mate.delete(f'{url}/{mid}').status_code == 403
+        edited = owner.patch(f'{url}/{mid}', json={'body': 'Pour at 8am'}).json()
+        assert edited['body'] == 'Pour at 8am' and edited['edited_at'] and edited['mentions'] == []
+        assert owner.patch(f'{url}/{mid}', json={'body': ' '}).status_code == 422
+        assert owner.delete(f"{url}/{pic['id']}").status_code == 200  # admin moderates
+        assert owner.get(f"{url}/files/{pic['files'][0]['id']}").status_code == 404
+        assert mate.delete(f"{url}/{doc['id']}").status_code == 200
+        assert mid in [m['id'] for m in mate.get(url).json()] and pic['id'] not in [m['id'] for m in mate.get(url).json()]
+        # outsiders see nothing
+        for call in (outsider.get(url), outsider.get(url + '/unread'), outsider.get(url + '/members'), outsider.post(url, data={'body': 'hi'}), outsider.get(f"{url}/files/{doc['files'][0]['id']}")):
+            assert call.status_code == 404
