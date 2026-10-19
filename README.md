@@ -10,6 +10,15 @@ Read [the hosting guide](deploy/PRIVATE-HOSTING.md) for setup and credentials. T
 
 The hosted demo uses fresh fictional Schimenti projects for Alo Yoga and Sage and Sound. Provider connections and email sending are simulated. Project data requires sign-in; the owner password is generated in Render. The published local development password does not work in hosted mode.
 
+## Vercel deployment (frontend + backend + Postgres)
+
+Live: https://sitesync-demo.vercel.app (sign in at `/login`). Two Vercel projects, deployed with the CLI from each folder (`vercel deploy --prod`):
+
+- `sitesync-api` (root `backend/`): FastAPI served by `index.py`, with Neon Postgres from the Vercel Marketplace. Tables and demo data are created on the first request, guarded by a Postgres advisory lock so concurrent cold starts cannot seed twice.
+- `sitesync-demo` (root `frontend/`): Next.js. `API_INTERNAL_URL` points at the API project; `/api/*` is proxied so the session cookie stays same-origin.
+
+Production env vars on `sitesync-api`: `APP_ENV=hosted-demo`, `DEMO_MODE=true`, `PRIVATE_DEMO=true`, `ENABLE_EMAIL_SEND=false`, `APP_URL`, `API_URL`, plus `PRIVATE_DEMO_PASSWORD` (20-72 bytes), `JWT_SECRET` and `TOKEN_ENCRYPTION_KEY`. Neon supplies `DATABASE_URL`/`POSTGRES_URL`. Vercel request bodies are capped near 4.5 MB, so large uploads are limited. There is no background scheduler on Vercel; use Vercel Cron if scheduled sync is needed.
+
 ## Static demo on GitHub Pages
 
 https://canaanstu.github.io/sitesync-demo/ is a static build with no backend. It uses recorded fictional data (`frontend/lib/demo-data.json`) and an in-browser mock API (`frontend/lib/mock-api.ts`). Quests, schedule progress and deliveries work and reset on reload; uploads, new projects and AI answers are disabled. `.github/workflows/pages.yml` deploys it on pushes to `main` (Settings → Pages → Source must be "GitHub Actions"). To refresh the data, run a freshly seeded local backend and `python deploy/record-demo-fixtures.py`. Build locally with `SITESYNC_STATIC=true NEXT_PUBLIC_STATIC_DEMO=true NEXT_PUBLIC_BASE_PATH=/sitesync-demo npx next build` in `frontend`.

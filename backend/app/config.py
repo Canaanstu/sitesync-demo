@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import secrets
 from cryptography.fernet import Fernet
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -51,7 +52,17 @@ if settings.ai_provider not in ('openai', 'anthropic'):
     raise RuntimeError('AI_PROVIDER must be openai or anthropic.')
 if not settings.demo_mode and (not settings.jwt_secret or not settings.token_encryption_key):
     raise RuntimeError('Live mode requires explicit JWT_SECRET and TOKEN_ENCRYPTION_KEY shared by all backend services.')
-Path('.local').mkdir(exist_ok=True)
+# Serverless hosts (Vercel) have a read-only filesystem and provide Postgres as POSTGRES_URL / DATABASE_URL.
+# SQLAlchemy needs the psycopg 3 driver name; hosts hand out plain postgres:// URLs.
+if settings.database_url.startswith('sqlite') and os.getenv('POSTGRES_URL'):
+    settings.database_url = os.environ['POSTGRES_URL']
+for _prefix in ('postgres://', 'postgresql://'):
+    if settings.database_url.startswith(_prefix):
+        settings.database_url = 'postgresql+psycopg://' + settings.database_url[len(_prefix):]
+try:
+    Path('.local').mkdir(exist_ok=True)
+except OSError:
+    pass
 if settings.app_env == 'production':
     if settings.demo_mode or len(settings.jwt_secret) < 32 or not settings.token_encryption_key:
         raise RuntimeError('Production requires DEMO_MODE=false and strong JWT/encryption secrets.')
@@ -62,7 +73,11 @@ if settings.app_env == 'production':
 for name in ('jwt_secret', 'token_encryption_key'):
     if not getattr(settings, name):
         path = Path('.local') / name
-        if not path.exists():
-            path.write_text(secrets.token_urlsafe(48) if name == 'jwt_secret' else Fernet.generate_key().decode())
-        setattr(settings, name, path.read_text().strip())
+        try:
+            if not path.exists():
+                path.write_text(secrets.token_urlsafe(48) if name == 'jwt_secret' else Fernet.generate_key().decode())
+            setattr(settings, name, path.read_text().strip())
+        except OSError:
+            # Read-only filesystem: use a per-process secret. Hosted deployments must set the env vars instead.
+            setattr(settings, name, secrets.token_urlsafe(48) if name == 'jwt_secret' else Fernet.generate_key().decode())
 fernet = Fernet(settings.token_encryption_key.encode())

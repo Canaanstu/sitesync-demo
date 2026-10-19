@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import hashlib
+import threading
 import json
 from pathlib import Path
 from typing import Literal
@@ -7,7 +8,8 @@ from fastapi import FastAPI, Depends, HTTPException, Request, Response, UploadFi
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
@@ -23,16 +25,44 @@ from .operations import router as operations_router
 from .launch import router as launch_router
 
 
+_ready = False
+_ready_lock = threading.Lock()
+_INIT_LOCK_KEY = 7302026
+
+
+def ensure_ready():
+    """Create tables and seed once per process. Serverless hosts may skip ASGI lifespan, so the first request also calls this.
+    A Postgres advisory lock stops simultaneous cold starts from seeding the same database twice."""
+    global _ready
+    if _ready:
+        return
+    with _ready_lock:
+        if _ready:
+            return
+        postgres = engine.dialect.name == 'postgresql'
+        with engine.connect().execution_options(isolation_level='AUTOCOMMIT') as lock:
+            if postgres:
+                lock.execute(text('SELECT pg_advisory_lock(:k)'), {'k': _INIT_LOCK_KEY})
+            try:
+                if settings.demo_mode:
+                    if postgres:
+                        lock.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+                    Base.metadata.create_all(engine)
+                with SessionLocal() as db:
+                    if not settings.demo_mode:
+                        demo_user = db.scalar(select(User).where(User.email == 'demo@example.com'))
+                        if demo_user and verify_password('DemoProject2026!', demo_user.password_hash):
+                            raise RuntimeError('Use a fresh live database; the known demo account must not be enabled in live mode.')
+                    initialize(db)
+            finally:
+                if postgres:
+                    lock.execute(text('SELECT pg_advisory_unlock(:k)'), {'k': _INIT_LOCK_KEY})
+        _ready = True
+
+
 @asynccontextmanager
 async def lifespan(app):
-    if settings.demo_mode:
-        Base.metadata.create_all(engine)
-    with SessionLocal() as db:
-        if not settings.demo_mode:
-            demo_user = db.scalar(select(User).where(User.email == 'demo@example.com'))
-            if demo_user and verify_password('DemoProject2026!', demo_user.password_hash):
-                raise RuntimeError('Use a fresh live database; the known demo account must not be enabled in live mode.')
-        initialize(db)
+    ensure_ready()
     yield
 
 
@@ -44,6 +74,8 @@ app.add_middleware(CORSMiddleware, allow_origins=[settings.app_url], allow_crede
 
 @app.middleware('http')
 async def protect_origin(request, call_next):
+    if not _ready:
+        await run_in_threadpool(ensure_ready)
     origin = request.headers.get('origin')
     if request.method not in ('GET', 'HEAD', 'OPTIONS') and origin and origin != settings.app_url:
         return JSONResponse({'detail': 'Request origin is not allowed.'}, status_code=403)

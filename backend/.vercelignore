@@ -1,0 +1,6 @@
+tests/
+.local/
+.venv/
+__pycache__/
+alembic/
+*.db
