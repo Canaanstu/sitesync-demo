@@ -1,12 +1,13 @@
 'use client';
 import Link from 'next/link';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {useQueries,useQuery} from '@tanstack/react-query';
-import {CalendarDays,ChevronLeft,ChevronRight,ChevronDown,History,Home,Package} from 'lucide-react';
+import {CalendarDays,ChevronLeft,ChevronRight,ChevronDown,History,Home,Package,TriangleAlert} from 'lucide-react';
 import {api,Row} from '../lib/api';
 import {DailyOverview,levelOf} from './project-hub';
 import {DueOverview} from './field-views';
 import {HistoryAgent} from './history-agent';
+import {ExceptionsView} from './exceptions';
 
 const iso=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const short=(name:string)=>name.split('|')[0].trim();
@@ -110,8 +111,18 @@ function ProjectFilter({projects,value,onChange}:{projects:Row[],value:string,on
  return <div className="filter-row" role="group" aria-label="Project">{[['all','All projects'],...projects.map(p=>[p.id,short(p.name)])].map(([k,l])=><button key={k} className={value===k?'active':''} aria-pressed={value===k} onClick={()=>onChange(k)}>{l}</button>)}</div>;
 }
 
-const TABS=[['home','Overview',Home],['schedule','Schedule',CalendarDays],['procurement','Procurement',Package],['history','History',History]] as const;
+const TABS=[['home','Overview',Home],['exceptions','Exceptions',TriangleAlert],['schedule','Schedule',CalendarDays],['procurement','Procurement',Package],['history','History',History]] as const;
+// A first-visit guide: the three things this product does that a spreadsheet cannot.
+function StartHere({go}:{go:(tab:string)=>void}){
+ const [hidden,setHidden]=useState(true);
+ useEffect(()=>{try{setHidden(localStorage.getItem('sitesync-start-here')==='done')}catch{setHidden(false)}},[]);
+ if(hidden)return null;
+ const close=()=>{setHidden(true);try{localStorage.setItem('sitesync-start-here','done')}catch{}};
+ const steps:[string,string,string,string][]=[['1','See what needs a decision','Every exception across your projects, most urgent first. Open one to see why it was flagged and what it puts at risk.','exceptions'],['2','Learn from past jobs','Import old schedules and delivery logs from Excel, then ask what usually runs late and how long work really takes.','history'],['3','Check the plan','Calendar and lookahead for every project, with what is overdue, due this week and later.','schedule']];
+ return <section className="start-here panel" aria-label="Start here"><div className="start-head"><div><b>New here? Start in three steps</b><small className="muted">Takes about two minutes. The help button (?) explains how SiteSync finds tasks.</small></div><button className="icon" aria-label="Hide this guide" onClick={close}>×</button></div><div className="start-steps">{steps.map(([n,t,d,tab])=><button key={n} onClick={()=>{go(tab);close()}}><span className="start-n">{n}</span><b>{t}</b><small>{d}</small></button>)}</div></section>
+}
 export function Dashboard({projects,name,company}:{projects:Row[],name?:string,company?:string}){
+ const exc=useQuery({queryKey:['exceptions'],queryFn:()=>api<Row>('/exceptions'),refetchInterval:30000});
  const [tab,setTab]=useState<string>('home'),[only,setOnly]=useState('all'),[q,setQ]=useState(''),[trade,setTrade]=useState('all'),[status,setStatus]=useState('all'),all=useOps(projects);
  const byProject=only==='all'?all:all.filter(o=>o.project.id===only);
  const trades=[...new Set(byProject.flatMap(o=>(o.board?.activities||[]).map((a:Row)=>a.trade).filter(Boolean)))].sort() as string[];
@@ -120,11 +131,12 @@ export function Dashboard({projects,name,company}:{projects:Row[],name?:string,c
  const ops=narrowed?byProject.map(o=>({...o,board:o.board&&{...o.board,activities:(o.board.activities||[]).filter((a:Row)=>(trade==='all'||a.trade===trade)&&(status==='all'||a.work_status===status)&&`${a.name} ${a.trade||''}`.toLowerCase().includes(q.trim().toLowerCase())),inspections:[]},proc:o.proc&&{...o.proc,items:[]}})):byProject;
  return <div className="dash"><ProjectList projects={projects}/>
   <div className="dash-main">
-   <div className="tabs" role="tablist" aria-label="Dashboard">{TABS.map(([k,label,Icon])=><button key={k} role="tab" aria-selected={tab===k} className={tab===k?'active':''} onClick={()=>setTab(k)}><Icon size={16}/>{label}</button>)}</div>
-   {tab==='home'&&<DailyOverview projects={projects} name={name} company={company} slot={<ProjectCards ops={all}/>}/>}
+   <div className="tabs" role="tablist" aria-label="Dashboard">{TABS.map(([k,label,Icon])=><button key={k} role="tab" aria-selected={tab===k} className={tab===k?'active':''} onClick={()=>setTab(k)}><Icon size={16}/>{label}{k==='exceptions'&&!!exc.data?.total&&<span className="tab-count">{exc.data.total}</span>}</button>)}</div>
+   {tab==='home'&&<><StartHere go={setTab}/><DailyOverview projects={projects} name={name} company={company} slot={<ProjectCards ops={all}/>}/></>}
    {tab==='schedule'&&<><h1>Schedule</h1><ProjectFilter projects={projects} value={only} onChange={v=>{setOnly(v);setTrade('all')}}/>
     <div className="filter-bar" role="search" aria-label="Filter the calendar"><input type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Search tasks, e.g. drywall" aria-label="Search tasks"/>{trades.length>0&&<select value={trade} onChange={e=>setTrade(e.target.value)} aria-label="Trade"><option value="all">All trades</option>{trades.map(t=><option key={t}>{t}</option>)}</select>}<select value={status} onChange={e=>setStatus(e.target.value)} aria-label="Status">{[['all','Any status'],['upcoming','Not started'],['today','In progress'],['blocked','Blocked'],['overdue','Overdue'],['complete','Complete']].map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>{narrowed&&<button className="ghost small" onClick={()=>{setQ('');setTrade('all');setStatus('all')}}>Clear</button>}</div>
     <CompanyCalendar ops={ops}/></>}
+   {tab==='exceptions'&&<ExceptionsView projects={projects}/>}
    {tab==='history'&&<HistoryAgent projects={projects}/>}
    {tab==='procurement'&&<><h1>Procurement</h1><ProjectFilter projects={projects} value={only} onChange={setOnly}/><Procurement ops={ops}/></>}
   </div></div>;

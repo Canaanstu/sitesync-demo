@@ -30,6 +30,8 @@ from .ai import answer
 from .operations import router as operations_router
 from .importer import router as import_router
 from .history_agent import router as history_router
+from .rules import router as rules_router
+from .exceptions import router as exceptions_router
 from .launch import router as launch_router
 
 
@@ -111,6 +113,8 @@ app = FastAPI(title='SiteSync - Construction Intelligence', lifespan=lifespan)
 app.include_router(operations_router)
 app.include_router(import_router)
 app.include_router(history_router)
+app.include_router(rules_router)
+app.include_router(exceptions_router)
 app.include_router(launch_router)
 app.add_middleware(CORSMiddleware, allow_origins=[settings.app_url], allow_credentials=True, allow_methods=['GET', 'POST', 'PATCH', 'DELETE'], allow_headers=['Content-Type'])
 

@@ -450,3 +450,38 @@ def test_sample_projects_are_internally_consistent(c):
     assert any('sauna' in n.lower() for n in names['Sage and Sound'])
     sage = next(p['id'] for p in ok(c.get('/api/projects')) if p['name'] == 'Sage and Sound')
     assert 'Alo' not in str(ok(c.get(f'/api/projects/{sage}/emails')))
+
+
+def test_exceptions_trace_three_layers(c):
+    data = ok(c.get('/api/exceptions'))
+    assert data['total'] == sum(data['counts'].values()) and data['total'] >= 3
+    sev = [i['severity'] for i in data['items']]
+    assert sev == sorted(sev, key=['high', 'medium', 'low'].index)
+    late = next(i for i in data['items'] if i['rule'] == 'delivery' and i['project_name'] == 'Alo Yoga' and 'Lighting' in i['title'])
+    t = late['trace']
+    assert t['why']['label'] and t['why']['steps'] and t['why']['clears_when']                                   # layer 1: why it was flagged, how to clear it
+    assert {e['type'] for e in t['evidence']} >= {'procurement', 'schedule'} and any(f['label'] == 'Expected delivery' for e in t['evidence'] for f in e['facts'])  # layer 2
+    assert t['affects']['activities'][0]['name'].startswith('Ceiling close') and 'starts in' in t['affects']['summary'][0] and any('21 days' in s for s in t['affects']['summary'])  # layer 3
+    pid = late['project_id']
+    assert ok(c.get(f'/api/projects/{pid}/risks/{late["id"]}/trace'))['rule'] == 'delivery'
+    only = ok(c.get(f'/api/exceptions?project_id={pid}'))
+    assert {i['project_id'] for i in only['items']} == {pid}
+    assert c.get('/api/exceptions?project_id=nope').status_code == 404
+
+
+def test_rules_are_configurable_per_project(c):
+    pid = project(c)
+    assert ok(c.get(f'/api/projects/{pid}/rules'))['config']['rfi']['window_days'] == 21
+    assert 'release' in ok(c.get('/api/rules/guide'))['rules']
+    before = {r['fingerprint'].split(':')[0] for r in ok(c.get(f'/api/projects/{pid}/risks')) if r['status'] == 'open'}
+    assert {'release', 'delivery', 'rfi'} <= before
+    ok(c.put(f'/api/projects/{pid}/rules', json={'rfi': {'enabled': False}, 'delivery': {'severity': 'low'}, 'warn_days': 14}))
+    after = ok(c.get(f'/api/projects/{pid}/risks'))
+    assert not any(r['fingerprint'].startswith('rfi') and r['status'] == 'open' for r in after)             # switched off: cleared from the list
+    assert all(r['severity'] == 'low' for r in after if r['fingerprint'].startswith('delivery') and r['status'] == 'open')
+    assert ok(c.get(f'/api/projects/{pid}/warnings'))                                                         # horizon is configurable
+    # a wider window brings it back, and early warning flags an item before its latest release date
+    ok(c.put(f'/api/projects/{pid}/rules', json={'rfi': {'enabled': True, 'window_days': 60, 'urgent_days': 20}}))
+    assert any(r['fingerprint'].startswith('rfi') and r['status'] == 'open' and r['severity'] == 'high' for r in ok(c.get(f'/api/projects/{pid}/risks')))
+    assert c.put(f'/api/projects/{pid}/rules', json={'rfi': {'severity': 'urgent'}}).status_code == 422
+    assert c.put(f'/api/projects/{pid}/rules', json={'rfi': {'window_days': 0}}).status_code == 422

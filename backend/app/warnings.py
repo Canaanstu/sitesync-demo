@@ -7,7 +7,9 @@ from .planning import workboard, local_today
 HORIZON_DAYS = 7
 
 
-def due_warnings(db, project, horizon=HORIZON_DAYS):
+def due_warnings(db, project, horizon=None):
+    from .rules import rule_config
+    horizon = horizon or rule_config(project)['warn_days']
     today = local_today(project)
     limit = today + timedelta(days=horizon)
     out = []

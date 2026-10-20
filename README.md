@@ -55,3 +55,24 @@ See [validation notes](VALIDATION.md) and [landing-page behavior](deploy/LANDING
 ## Data and approvals
 
 Keep `.env`, `.local`, credentials, databases, and contact exports out of Git. AI drafts require human review. Procurement lead times and carrier updates depend on recorded source information. Received materials do not prove installation complete. Use approved integrations and separate production infrastructure before handling real contractor records.
+
+## Free AI model
+
+SiteSync's chat and History agent work with any OpenAI-compatible endpoint, so no paid key is needed.
+
+Quickest: create a free key at [console.groq.com/keys](https://console.groq.com/keys) and set one variable on the backend:
+
+```
+GROQ_API_KEY=...
+```
+
+That selects Groq's `llama-3.3-70b-versatile`. For anything else (OpenRouter `:free` models, Google's OpenAI-compatible endpoint, or a local Ollama), set:
+
+```
+AI_PROVIDER=compatible
+LLM_BASE_URL=https://openrouter.ai/api/v1      # or http://localhost:11434/v1 for Ollama
+LLM_MODEL=meta-llama/llama-3.3-70b-instruct:free
+LLM_API_KEY=...                                 # not needed for a local Ollama
+```
+
+Free tiers are rate limited and may use your prompts to improve their models, so check each provider's terms before sending real client data. A local Ollama keeps everything on your machine. If the model is busy or answers badly, SiteSync falls back to a plain lookup of your records instead of failing.
