@@ -1,4 +1,6 @@
+import logging
 import json
+import httpx
 from sqlalchemy import select, cast
 from pgvector.sqlalchemy import Vector
 from fastapi import HTTPException
@@ -21,15 +23,48 @@ class OpenAIProvider(LLMProvider):
         return data['choices'][0]['message']['content']
 
 
+PREFERRED = ('openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant', 'llama-3.1-70b-versatile', 'gemma2-9b-it')
+_usable = {}
+
+
 class CompatibleProvider(LLMProvider):
     """Any server that speaks the OpenAI chat-completions protocol (Groq, OpenRouter, Gemini, Ollama)."""
+    def models(self, headers):
+        """Models this key may call, best first. Accounts differ in which free models they can use."""
+        base = settings.llm_base_url.rstrip('/')
+        if base not in _usable:
+            try:
+                ids = [m['id'] for m in httpx.get(base + '/models', headers=headers, timeout=20).json().get('data', [])]
+            except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                ids = []
+            _usable[base] = [m for m in PREFERRED if m in ids]
+        return _usable[base]
+
     def complete(self, messages):
-        body = {'model': settings.llm_model, 'messages': messages, 'temperature': 0.2}
-        if settings.llm_json_mode:
-            body['response_format'] = {'type': 'json_object'}
         headers = {'Authorization': 'Bearer ' + settings.llm_api_key} if settings.llm_api_key else {}
-        data = request('POST', settings.llm_base_url.rstrip('/') + '/chat/completions', headers=headers, json=body).json()
-        return data['choices'][0]['message']['content']
+        url = settings.llm_base_url.rstrip('/') + '/chat/completions'
+        model = _usable.get('chosen:' + url) or settings.llm_model
+        for attempt in range(2):
+            body = {'model': model, 'messages': messages, 'temperature': 0.2}
+            if settings.llm_json_mode:
+                body['response_format'] = {'type': 'json_object'}
+            try:
+                data = request('POST', url, headers=headers, json=body).json()
+                return data['choices'][0]['message']['content']
+            except HTTPException:
+                # Only the provider's short error code is logged (never the prompt, key or full body).
+                probe = httpx.post(url, headers=headers, json={'model': model, 'max_tokens': 1, 'messages': [{'role': 'user', 'content': 'hi'}]}, timeout=20)
+                try:
+                    err = probe.json().get('error', {})
+                except ValueError:
+                    err = {}
+                logging.getLogger('sitesync.ai').warning('provider error: model=%s http=%s code=%s', model, probe.status_code, err.get('code'))
+                if attempt == 0 and err.get('code') == 'model_not_found':
+                    choices = [m for m in self.models(headers) if m != model]
+                    if choices:
+                        model = _usable['chosen:' + url] = choices[0]
+                        continue
+                raise
 
 
 class AnthropicProvider(LLMProvider):
@@ -147,7 +182,8 @@ def answer(db, project_id, question, task='chat', risk=None, context=''):
     try:
         raw = get_provider().complete([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': json.dumps({'task': task, 'question': question, 'earlier_question': context or None, 'evidence': evidence}, default=str)}])
         return {**parse_answer(raw, evidence), 'mode': 'live'}
-    except (KeyError, IndexError, HTTPException, ValueError):
+    except (KeyError, IndexError, HTTPException, ValueError) as exc:
+        logging.getLogger('sitesync.ai').warning('model answer rejected: %s %s', type(exc).__name__, str(getattr(exc, 'detail', exc))[:300])
         # A busy, rate-limited or confused model must not break the chat: show the matching records instead.
         result = keyword_answer(evidence, task, risk, 'The AI model did not answer this time, so here are the matching records.')
         result['mode'] = 'fallback'
