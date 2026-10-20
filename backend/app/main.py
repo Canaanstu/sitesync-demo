@@ -33,6 +33,7 @@ from .history_agent import router as history_router
 from .rules import router as rules_router
 from .exceptions import router as exceptions_router
 from .launch import router as launch_router
+from .bluebeam import router as bluebeam_router
 
 
 def add_missing_columns():
@@ -116,6 +117,7 @@ app.include_router(history_router)
 app.include_router(rules_router)
 app.include_router(exceptions_router)
 app.include_router(launch_router)
+app.include_router(bluebeam_router)
 app.add_middleware(CORSMiddleware, allow_origins=[settings.app_url], allow_credentials=True, allow_methods=['GET', 'POST', 'PATCH', 'DELETE'], allow_headers=['Content-Type'])
 
 

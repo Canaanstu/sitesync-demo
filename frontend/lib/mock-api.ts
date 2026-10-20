@@ -2,6 +2,7 @@
 // (NEXT_PUBLIC_STATIC_DEMO=true). Reads come from recorded fictional demo data; a few actions
 // (tasks, schedule progress, receiving deliveries) change in-memory state that resets on reload.
 import raw from './demo-data.json';
+import {bluebeamDemo} from './bluebeam-demo';
 type Row=Record<string,any>;
 const data:Record<string,any>=JSON.parse(JSON.stringify(raw));
 const AUTH='sitesync:static-demo-auth';
@@ -25,6 +26,8 @@ export async function mockApi(path:string,body?:unknown,method?:string):Promise<
  if(/^\/auth\/(forgot|reset|verify|resend-verification)$/.test(clean)||(clean==='/me'&&m==='DELETE'))throw new Error('Accounts and email are not available in the static preview.');
  if(clean==='/launch/requests')throw new Error('The request form is turned off on this static preview.');
  if(clean==='/me'&&!authed()){const e=new Error('Sign in to continue.');(e as any).status=401;if(typeof window!=='undefined')window.location.href=(process.env.NEXT_PUBLIC_BASE_PATH||'')+'/login/';throw e}
+
+ if(clean.startsWith('/integrations/bluebeam/'))return bluebeamDemo(data,clean,m,b,authed());
 
  const risk=clean.match(/^\/projects\/([^/]+)\/risks\/([^/]+)\/(resolve|dismiss|reopen)$/);
  if(m==='POST'&&risk){
