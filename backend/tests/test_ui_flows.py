@@ -218,3 +218,53 @@ def test_default_workspace_name_is_unnamed_until_saved(monkeypatch):
         assert me['organization_name'].endswith("'s workspace") and me['organization_named'] is False
         ok(client.post('/api/organizations', json={'name': me['organization_name']}))
         assert ok(client.get('/api/me'))['organization_named'] is True
+
+
+def make_workbook(sheets):
+    import io
+    from openpyxl import Workbook
+    wb = Workbook()
+    wb.remove(wb.active)
+    for name, rows in sheets.items():
+        ws = wb.create_sheet(name)
+        for row in rows:
+            ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_import_history_from_excel(c):
+    import datetime as dt
+    pid = project(c)
+    xlsx = make_workbook({
+        'Look Ahead': [['Weekly lookahead - Harbor Tower'], [], ['Task Name', 'Planned Start', 'Planned Finish', '% Complete', 'Responsible'],
+                       ['Hang drywall L2', dt.datetime(2023, 3, 1), dt.datetime(2023, 3, 9), 1.0, 'ABC Drywall'],
+                       ['Paint L2', 'Mar 10, 2023', '03/15/2023', 0.5, 'Pro Paint'], ['', None, None, None, None]],
+        'Material Log': [['Material', 'Supplier', 'Need By', 'Lead Time', 'Status'],
+                         ['Switchgear', 'Eaton', 45000, '12 weeks', 'Received'], ['Rebar', 'CMC', '2023-02-01', 14, 'bogus-date-row']],
+        'RFI Log': [['RFI #', 'Subject', 'Status', 'Due', 'Answer'], [7, 'Slab edge detail', 'Closed', '2023-01-10', 'See SK-4'], [8, None, None, None, None]],
+        'Notes': [['random', 'stuff'], ['a', 'b']],
+    })
+    files = {'file': ('history.xlsx', xlsx, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+    prev = ok(c.post(f'/api/projects/{pid}/import/preview', files=files))
+    by = {s['sheet']: s for s in prev['sheets']}
+    assert by['Look Ahead']['kind'] == 'schedule' and by['Look Ahead']['header_row'] == 3
+    assert by['Material Log']['kind'] == 'procurement' and by['RFI Log']['kind'] == 'rfis'
+    assert by['Notes']['kind'] is None
+    assert by['Look Ahead']['importable'] == 2 and by['Look Ahead']['sample'][0]['percent_complete'] == 100.0
+    assert by['Material Log']['sample'][0]['lead_time_days'] == 84 and by['Material Log']['sample'][0]['status'] == 'delivered'
+    done = ok(c.post(f'/api/projects/{pid}/import', files=files))
+    assert done['created'] == 2 + 2 + 2 and done['updated'] == 0
+    again = ok(c.post(f'/api/projects/{pid}/import', files={'file': files['file']}))
+    assert again['created'] == 0 and again['updated'] == 6
+
+
+def test_import_rejects_bad_files(c):
+    pid = project(c)
+    r = c.post(f'/api/projects/{pid}/import/preview', files={'file': ('old.xls', b'x', 'application/vnd.ms-excel')})
+    assert r.status_code == 422 and 'xlsx' in r.text
+    r = c.post(f'/api/projects/{pid}/import', files={'file': ('a.csv', b'foo,bar\n1,2\n', 'text/csv')})
+    assert r.status_code == 422
+    csv_ok = b'Item,Vendor,Required On Site,Lead Time\nDoors,Acme,2023-05-01,30\n'
+    assert ok(c.post(f'/api/projects/{pid}/import', files={'file': ('p.csv', csv_ok, 'text/csv')}))['created'] == 1

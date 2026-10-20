@@ -28,6 +28,7 @@ from .parsing import parse_table, parse_document
 from .sync import sync_project, ingest_rows, generate_embeddings
 from .ai import answer
 from .operations import router as operations_router
+from .importer import router as import_router
 from .launch import router as launch_router
 
 
@@ -107,6 +108,7 @@ async def lifespan(app):
 
 app = FastAPI(title='SiteSync - Construction Intelligence', lifespan=lifespan)
 app.include_router(operations_router)
+app.include_router(import_router)
 app.include_router(launch_router)
 app.add_middleware(CORSMiddleware, allow_origins=[settings.app_url], allow_credentials=True, allow_methods=['GET', 'POST', 'PATCH', 'DELETE'], allow_headers=['Content-Type'])
 

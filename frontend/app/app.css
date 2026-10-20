@@ -576,3 +576,23 @@ html[data-theme=dark] .gx .week-ahead{background:#3f3210;color:#ffd98a}
 .gx .proj-card-row small{display:block;color:var(--muted)}
 .gx .proj-card-row svg{color:var(--accent);flex:none}
 .gx .proj-card-row i{font-style:normal;font-size:12px;font-weight:800;min-width:22px;padding:1px 7px;border-radius:999px;background:#c0392b;color:#fff;text-align:center}
+
+/* historical data import */
+.gx .section-actions{display:flex;gap:8px;flex-wrap:wrap}
+.gx .hist-import{display:flex;flex-direction:column;gap:12px}
+.gx .import-sheet{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--soft)}
+.gx .import-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.gx .import-head select,.gx .map-grid select{min-height:38px;max-width:100%}
+.gx .map-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:8px}
+.gx .map-grid label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:700}
+.gx .map-grid em{color:var(--accent);font-style:normal}
+.gx .import-sample{overflow-x:auto}
+.gx .import-sample table{width:100%;border-collapse:collapse;font-size:12.5px}
+.gx .import-sample th,.gx .import-sample td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+.gx .import-issues ul{margin:6px 0 0;padding-left:18px;font-size:13px}
+.gx .check-row{display:flex;gap:10px;align-items:flex-start;font-size:14px}
+.gx .check-row input{margin-top:3px}
+.gx .modal:has(.hist-import){width:min(760px,calc(100vw - 24px))}
+.gx .check-row{flex-direction:row;align-items:flex-start;font-weight:500}
+html[data-theme=dark] .splash-word{color:#e8f4fb}
+html[data-theme=dark] .splash-word .caret{background:#67b7eb}
