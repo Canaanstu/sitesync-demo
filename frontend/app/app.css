@@ -729,3 +729,4 @@ html[data-theme=dark] .gx .chat-source{background:#16212b}
 .gx .suggested-questions.compact button{white-space:nowrap;border-radius:999px;flex:none}
 .gx .chat-source-close{flex:none;width:36px;height:36px;min-height:36px;padding:0;display:grid;place-items:center;border-radius:50%}
 .gx .assistant-source .section-heading{align-items:flex-start}
+.gx .answer-list li>span:only-child{color:var(--ink)}

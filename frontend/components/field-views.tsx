@@ -96,7 +96,7 @@ export function ScheduleView({board,items,risks,canEdit,busy,open,onProgress,war
   </article>};
  return <>
   <p className={'plan-forecast '+tone}>{variance==null?'No finish forecast yet.':<>Forecast finish <b>{dateLabel(board.forecast_finish)}</b> · {variance>0?`${variance} days late`:variance===0?'on target':`${Math.abs(variance)} days early`}</>}</p>
-  {soon.length>0&&<div className="week-warning" role="status"><Siren size={18}/><div><b>{soon.length} {soon.length===1?'item':'items'} due within a week</b><ul>{soon.slice(0,4).map(w=><li key={w.key}>{w.title} · {w.days<0?`overdue ${-w.days}d`:w.days===0?'today':w.days===1?'tomorrow':`in ${w.days} days`}</li>)}{soon.length>4&&<li>and {soon.length-4} more</li>}</ul></div></div>}
+  {soon.length>0&&<div className="week-warning" role="status"><Siren size={18}/><div><b>{soon.length} {soon.length===1?'item needs':'items need'} attention this week</b><ul>{soon.slice(0,4).map(w=><li key={w.key}>{w.title} · {w.days<0?`overdue ${-w.days}d`:w.days===0?'today':w.days===1?'tomorrow':`in ${w.days} days`}</li>)}{soon.length>4&&<li>and {soon.length-4} more</li>}</ul></div></div>}
   {['lookahead','calendar'].includes(current)&&<DueOverview asOf={asOf} rows={overview}/>}
   <div className="toolbar">
    <Choices label="Schedule views" value={current} onChange={setView} options={[{value:'all',label:'To do'},{value:'lookahead',label:'Lookahead'},{value:'calendar',label:'Calendar'},{value:'inspections',label:'Inspections'},{value:'complete',label:'Done'}]}/>

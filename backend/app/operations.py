@@ -21,6 +21,15 @@ from .planning import workboard, schedule_tasks, template_tasks, local_today, fi
 from .workflow_ai import structured, ProposedSchedule, ProposedRFI, research_inspection
 from .parsing import parse_document
 
+def pretty(value):
+    """2026-11-23 -> Nov 23, for text shown to people."""
+    try:
+        d = date.fromisoformat(str(value)[:10])
+        return f"{d.strftime('%b')} {d.day}"
+    except ValueError:
+        return str(value)
+
+
 router = APIRouter(prefix='/api/projects/{project_id}/ops')
 Db, Auth = Depends(get_db), Depends(current_user)
 
@@ -736,7 +745,7 @@ def agents(project_id:str,db:Session=Db,user=Auth):
             stale_links.append('Relink '+x.name+' to the new schedule.')
     tasks=[{'title':a['name'],'detail':'Remaining work: '+str(a['remaining_workdays'])+' working days.','link':'schedule?view=today'} for a in b['today']]
     tasks += [{'title':a['name'],'detail':'; '.join(a['blockers']),'link':'schedule?view=blocked'} for a in b['blocked']]
-    tasks += [{'title':'Expedite '+x.name,'detail':f'Expected {x.expected_delivery_date}; required {x.required_on_site_date}.','link':'procurement'} for x in late]
+    tasks += [{'title':'Expedite '+x.name,'detail':f'Expected {pretty(x.expected_delivery_date)}; required {pretty(x.required_on_site_date)}.','link':'procurement'} for x in late]
     tasks += [{'title':'Request '+i['data']['name'],'detail':'No appointment confirmed. Check municipal availability.','link':'schedule?view=inspections'} for i in b['inspections'] if i['status']=='planned']
     tasks += [{'title':x,'detail':'The prior baseline was replaced; confirm the new installation activity.','link':'procurement'} for x in stale_links]
     tasks += [{'title':'Relink '+i['data']['name'],'detail':'The previous baseline was replaced. Select the activities held by this inspection.','link':'schedule?view=inspections'} for i in b['inspections'] if i['status']!='passed' and any(k not in active for k in i['data'].get('blocks_activity_ids',[]))]

@@ -485,3 +485,11 @@ def test_rules_are_configurable_per_project(c):
     assert any(r['fingerprint'].startswith('rfi') and r['status'] == 'open' and r['severity'] == 'high' for r in ok(c.get(f'/api/projects/{pid}/risks')))
     assert c.put(f'/api/projects/{pid}/rules', json={'rfi': {'severity': 'urgent'}}).status_code == 422
     assert c.put(f'/api/projects/{pid}/rules', json={'rfi': {'window_days': 0}}).status_code == 422
+
+
+def test_model_answer_prose_is_cleaned():
+    from app.ai import clean_text
+    raw = 'Lighting (expected 2026\u201111\u201123) \u301038663e39-df7c-4aa2-bdb8-d51485351362\u3011. Then [d3895a09-605b-481f-b4d2-d6ef80065d2e] millwork .'
+    out = clean_text(raw)
+    assert '38663e39' not in out and 'd3895a09' not in out and '\u2011' not in out
+    assert '2026-11-23' in out
