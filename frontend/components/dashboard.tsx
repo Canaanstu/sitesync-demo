@@ -2,10 +2,11 @@
 import Link from 'next/link';
 import {useState} from 'react';
 import {useQueries,useQuery} from '@tanstack/react-query';
-import {CalendarDays,ChevronLeft,ChevronRight,ChevronDown,Home,Package} from 'lucide-react';
+import {CalendarDays,ChevronLeft,ChevronRight,ChevronDown,History,Home,Package} from 'lucide-react';
 import {api,Row} from '../lib/api';
 import {DailyOverview,levelOf} from './project-hub';
 import {DueOverview} from './field-views';
+import {HistoryAgent} from './history-agent';
 
 const iso=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const short=(name:string)=>name.split('|')[0].trim();
@@ -109,7 +110,7 @@ function ProjectFilter({projects,value,onChange}:{projects:Row[],value:string,on
  return <div className="filter-row" role="group" aria-label="Project">{[['all','All projects'],...projects.map(p=>[p.id,short(p.name)])].map(([k,l])=><button key={k} className={value===k?'active':''} aria-pressed={value===k} onClick={()=>onChange(k)}>{l}</button>)}</div>;
 }
 
-const TABS=[['home','Overview',Home],['schedule','Schedule',CalendarDays],['procurement','Procurement',Package]] as const;
+const TABS=[['home','Overview',Home],['schedule','Schedule',CalendarDays],['procurement','Procurement',Package],['history','History',History]] as const;
 export function Dashboard({projects,name,company}:{projects:Row[],name?:string,company?:string}){
  const [tab,setTab]=useState<string>('home'),[only,setOnly]=useState('all'),[q,setQ]=useState(''),[trade,setTrade]=useState('all'),[status,setStatus]=useState('all'),all=useOps(projects);
  const byProject=only==='all'?all:all.filter(o=>o.project.id===only);
@@ -124,6 +125,7 @@ export function Dashboard({projects,name,company}:{projects:Row[],name?:string,c
    {tab==='schedule'&&<><h1>Schedule</h1><ProjectFilter projects={projects} value={only} onChange={v=>{setOnly(v);setTrade('all')}}/>
     <div className="filter-bar" role="search" aria-label="Filter the calendar"><input type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Search tasks, e.g. drywall" aria-label="Search tasks"/>{trades.length>0&&<select value={trade} onChange={e=>setTrade(e.target.value)} aria-label="Trade"><option value="all">All trades</option>{trades.map(t=><option key={t}>{t}</option>)}</select>}<select value={status} onChange={e=>setStatus(e.target.value)} aria-label="Status">{[['all','Any status'],['upcoming','Not started'],['today','In progress'],['blocked','Blocked'],['overdue','Overdue'],['complete','Complete']].map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>{narrowed&&<button className="ghost small" onClick={()=>{setQ('');setTrade('all');setStatus('all')}}>Clear</button>}</div>
     <CompanyCalendar ops={ops}/></>}
+   {tab==='history'&&<HistoryAgent projects={projects}/>}
    {tab==='procurement'&&<><h1>Procurement</h1><ProjectFilter projects={projects} value={only} onChange={setOnly}/><Procurement ops={ops}/></>}
   </div></div>;
 }

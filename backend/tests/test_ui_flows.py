@@ -268,3 +268,45 @@ def test_import_rejects_bad_files(c):
     assert r.status_code == 422
     csv_ok = b'Item,Vendor,Required On Site,Lead Time\nDoors,Acme,2023-05-01,30\n'
     assert ok(c.post(f'/api/projects/{pid}/import', files={'file': ('p.csv', csv_ok, 'text/csv')}))['created'] == 1
+
+
+def test_history_agent_learns_from_imports(c):
+    from datetime import date, timedelta
+    pid = project(c)
+    assert ok(c.get('/api/history/overview'))['total'] == 0
+    empty = ok(c.post('/api/history/ask', json={'question': 'How long do switchgear deliveries take?'}))
+    assert empty['confidence'] == 'low' and empty['recommended_actions'] and not empty['sources']
+    past = c.post('/api/projects', json={'name': 'Harbor Tower 2023'})
+    past_id = ok(past)['id']
+    csv_text = ('Item,Vendor,Need By,Expected Delivery,Lead Time,Status\n'
+                'Switchgear,Eaton,2023-03-01,2023-03-20,84,delivered\nSwitchgear,Eaton,2023-06-01,2023-06-12,84,delivered\nSwitchgear,Square D,2023-09-01,2023-08-28,70,delivered\n'
+                'Door hardware,Allegion,2023-04-01,2023-04-01,21,delivered\n')
+    ok(c.post(f'/api/projects/{past_id}/import', files={'file': ('log.csv', csv_text.encode(), 'text/csv')}))
+    sched = 'Task,Start,Finish,Trade\nDrywall L1,2023-02-01,2023-02-20,Drywall\nDrywall L2,2023-03-01,2023-03-22,Drywall\n'
+    ok(c.post(f'/api/projects/{past_id}/import', files={'file': ('s.csv', sched.encode(), 'text/csv')}))
+    rfi = 'RFI #,Subject,Status,Due\n1,Switchgear clearance in electrical room,Closed,2023-01-10\n'
+    ok(c.post(f'/api/projects/{past_id}/import', files={'file': ('r.csv', rfi.encode(), 'text/csv')}))
+    assert ok(c.get('/api/history/overview'))['total'] == 4 + 2 + 1
+    lead = ok(c.post('/api/history/ask', json={'question': 'How long do switchgear deliveries take and are they late?'}))
+    assert 'Switchgear' in lead['answer'] and 'about 79 days' in lead['answer'] and 'late 2 of 3' in lead['answer']
+    assert lead['sources'] and all(s['project'] == 'Harbor Tower 2023' for s in lead['sources']) and lead['steps'][0]['tool'] == 'lead_times'
+    assert 'Drywall' in ok(c.post('/api/history/ask', json={'question': 'How many days does drywall take?'}))['answer']
+    assert 'clearance' in ok(c.post('/api/history/ask', json={'question': 'Any RFIs about switchgear?'}))['answer']
+    # the new project: an open switchgear order with less lead time than history shows up as a warning
+    ok(c.post(f'/api/projects/{pid}/uploads/procurement-log', files={'file': ('p.csv', (f'name,status,required_on_site_date,lead_time_days,vendor\nMain switchgear,ordered,{(date.today() + timedelta(days=40)).isoformat()},30,Eaton\n').encode(), 'text/csv')}))
+    flag = ok(c.post('/api/history/ask', json={'question': 'What should I watch on this new project based on past projects?', 'project_id': pid}))
+    assert any(s['tool'] == 'compare_to_current_project' for s in flag['steps']) and 'Main switchgear' in flag['answer'] and '30 days' in flag['answer']
+    assert c.post('/api/history/ask', json={'question': 'hi'}).status_code == 422
+    assert c.post('/api/history/ask', json={'question': 'anything here', 'project_id': 'nope'}).status_code == 404
+
+
+def test_history_agent_generic_questions(c):
+    pid = project(c)
+    past_id = ok(c.post('/api/projects', json={'name': 'Old Job'}))['id']
+    log = 'Item,Vendor,Need By,Expected Delivery,Lead Time,Status\nSwitchgear,Eaton,2023-03-01,2023-03-20,84,delivered\nDoors,Acme,2023-04-01,2023-04-01,21,delivered\n'
+    ok(c.post(f'/api/projects/{past_id}/import', files={'file': ('log.csv', log.encode(), 'text/csv')}))
+    for q in ('How long do deliveries usually take, and which ones run late?', 'which items arrive late most often?'):
+        r = ok(c.post('/api/history/ask', json={'question': q}))
+        assert 'Switchgear' in r['answer'] and 'Doors' in r['answer'], r['answer']
+    miss = ok(c.post('/api/history/ask', json={'question': 'How long does asphalt take to arrive?'}))
+    assert 'asphalt' in miss['answer'] and miss['confidence'] == 'low'
