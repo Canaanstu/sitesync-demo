@@ -32,6 +32,8 @@ KINDS = {
         'name': ('Activity name', 'text', ['activity name', 'task name', 'activity', 'task', 'name', 'activity description', 'work item', 'description', 'item']),
         'start_date': ('Start', 'date', ['start date', 'planned start', 'early start', 'baseline start', 'start', 'begin']),
         'finish_date': ('Finish', 'date', ['finish date', 'planned finish', 'early finish', 'baseline finish', 'finish', 'end date', 'end', 'completion date', 'due date']),
+        'actual_start': ('Actual start', 'date', ['actual start date', 'actual start', 'started on', 'date started']),
+        'actual_finish': ('Actual finish', 'date', ['actual finish date', 'actual finish', 'actual end', 'completed on', 'date completed', 'completion actual']),
         'activity_id': ('Activity ID', 'text', ['activity id', 'task id', 'activity code', 'wbs', 'id', 'code']),
         'trade': ('Trade', 'text', ['trade', 'responsible party', 'responsible', 'subcontractor', 'contractor', 'crew', 'discipline', 'assigned to']),
         'percent_complete': ('% complete', 'percent', ['percent complete', '% complete', 'pct complete', 'progress', 'complete', 'percent']),
@@ -45,6 +47,7 @@ KINDS = {
         'lead_time_days': ('Lead time', 'days', ['lead time days', 'lead time', 'lead']),
         'required_on_site_date': ('Required on site', 'date', ['required on site date', 'required on site', 'required onsite', 'need by', 'needed by', 'need date', 'required date', 'date required', 'on site date', 'rosd']),
         'expected_delivery_date': ('Expected delivery', 'date', ['expected delivery date', 'expected delivery', 'estimated delivery', 'delivery date', 'promised date', 'eta', 'ship date', 'delivery']),
+        'actual_delivery': ('Actual delivery', 'date', ['actual delivery date', 'actual delivery', 'actual arrival', 'date delivered', 'delivered on', 'date received', 'received date', 'received on', 'delivered date']),
         'release_date': ('Release / order date', 'date', ['release date', 'order date', 'date ordered', 'po date', 'released']),
         'notes': ('Notes', 'text', ['notes', 'comments', 'remarks']),
     }},
@@ -155,6 +158,8 @@ def suggest_mapping(headers, kind):
                 for i, n in enumerate(names):
                     if i in taken or not n:
                         continue
+                    if contains and 'actual' in n and not field.startswith('actual'):
+                        continue  # "Actual Finish (MM/DD)" is not the planned finish
                     if n == syn or (contains and re.search(r'(^| )' + re.escape(syn) + r'( |$)', n)):
                         mapping[field] = i
                         taken.add(i)

@@ -621,3 +621,6 @@ html[data-theme=dark] .splash-word .caret{background:#67b7eb}
 .gx .hist-compose input{flex:1;min-height:46px}
 .gx .hist-agent{padding-bottom:70px}
 .gx .hist-compose{background:var(--paper);padding:10px 0;z-index:5}
+.gx .assistant-head-actions,.gx .hist-tools{display:flex;gap:8px;align-items:flex-end}
+.gx .clear-chat{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;font-size:13px}
+.gx .clear-chat.danger{background:#c0392b;color:#fff;border-color:#c0392b}

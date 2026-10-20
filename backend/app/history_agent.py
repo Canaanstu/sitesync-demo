@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from .ai import OpenAIProvider, AnthropicProvider
+from .ai import ai_ready, get_provider, extract_json
 from .config import settings
 from .database import get_db
 from .models import Project, ProjectMember, Procurement, Activity, RFI, Submittal
@@ -101,9 +101,15 @@ class Corpus:
 
 # ---- tools ----------------------------------------------------------------------------------------------------
 
+def arrival(p):
+    """(date, basis): the real delivery date when we have one, otherwise the expected date."""
+    actual = day((p.raw_json or {}).get('actual_delivery'))
+    return (actual, 'actual') if actual else (day(p.expected_delivery_date), 'expected')
+
+
 def slip_days(p):
-    required, expected = day(p.required_on_site_date), day(p.expected_delivery_date)
-    return (expected - required).days if required and expected else None
+    required, (when, _) = day(p.required_on_site_date), arrival(p)
+    return (when - required).days if required and when else None
 
 
 def procurement_groups(rows, key):
@@ -114,10 +120,11 @@ def procurement_groups(rows, key):
     for name, items in groups.items():
         leads = [r.lead_time_days for r in items if r.lead_time_days is not None]
         slips = [s for s in (slip_days(r) for r in items) if s is not None]
+        actual = sum(1 for r in items if slip_days(r) is not None and arrival(r)[1] == 'actual')
         late = [s for s in slips if s > 0]
         out.append({'name': name, 'count': len(items), 'projects': len({r.project_id for r in items}),
                     'avg_lead_time_days': fnum(statistics.mean(leads)) if leads else None, 'max_lead_time_days': max(leads) if leads else None,
-                    'deliveries_with_dates': len(slips), 'late_count': len(late), 'late_share': fnum(100 * len(late) / len(slips)) if slips else None,
+                    'deliveries_with_dates': len(slips), 'from_actual_dates': actual, 'late_count': len(late), 'late_share': fnum(100 * len(late) / len(slips)) if slips else None,
                     'avg_days_late_when_late': fnum(statistics.mean(late)) if late else None})
     return sorted(out, key=lambda g: -g['count'])
 
@@ -137,18 +144,22 @@ def tool_durations(c: Corpus, query='', project_id=None, **_):
     rows = c.matching('schedule', terms(query), project_id)
     groups = {}
     for r in rows:
-        s, f = day(r.start_date), day(r.finish_date)
+        raw = r.raw_json or {}
+        a_s, a_f = day(raw.get('actual_start')), day(raw.get('actual_finish'))
+        s, f = (a_s, a_f) if a_s and a_f else (day(r.start_date), day(r.finish_date))
         if s and f and f >= s:
-            groups.setdefault(norm_name(r.name), []).append((r, (f - s).days + 1))
+            groups.setdefault(norm_name(r.name), []).append((r, (f - s).days + 1, bool(a_s and a_f), (a_f - day(r.finish_date)).days if a_f and day(r.finish_date) else None))
     if not groups:
         return {'found': 0, 'note': 'No historical activities with start and finish dates match.'}
     out = []
     for name, items in groups.items():
         d = [x[1] for x in items]
-        for r, _ in items[:5]:
+        overruns = [x[3] for x in items if x[3] is not None]
+        for r, *_ in items[:5]:
             c.cite('schedule', r)
-        out.append({'activity': name, 'count': len(d), 'projects': len({r.project_id for r, _ in items}), 'trades': sorted({r.trade for r, _ in items if r.trade})[:3],
-                    'avg_days': fnum(statistics.mean(d)), 'min_days': min(d), 'max_days': max(d)})
+        out.append({'activity': name, 'count': len(d), 'projects': len({x[0].project_id for x in items}), 'trades': sorted({x[0].trade for x in items if x[0].trade})[:3],
+                    'avg_days': fnum(statistics.mean(d)), 'min_days': min(d), 'max_days': max(d), 'from_actual_dates': sum(1 for x in items if x[2]),
+                    'avg_finish_vs_plan_days': fnum(statistics.mean(overruns)) if overruns else None})
     return {'found': sum(g['count'] for g in out), 'activities': sorted(out, key=lambda g: -g['count'])[:10]}
 
 
@@ -241,7 +252,13 @@ def tool_apply(c: Corpus, project_id=None, **_):
         if not tokens:
             continue
         hist = [h for h in c.matching('schedule', tokens, project_id) if len(stems(a.name) & stems(h.name)) >= 1 and day(h.start_date) and day(h.finish_date)]
-        spans = [(day(h.finish_date) - day(h.start_date)).days + 1 for h in hist if day(h.finish_date) >= day(h.start_date)]
+        spans = []
+        for h in hist:
+            raw = h.raw_json or {}
+            s0, f0 = (day(raw.get('actual_start')), day(raw.get('actual_finish')))
+            s0, f0 = (s0, f0) if s0 and f0 else (day(h.start_date), day(h.finish_date))
+            if f0 >= s0:
+                spans.append((f0 - s0).days + 1)
         planned = (f - s).days + 1
         if len(spans) >= 1 and planned < statistics.mean(spans) * 0.8:
             for h in hist[:4]:
@@ -268,11 +285,23 @@ TOOLS = {
 def route(question, has_project):
     w = words(question)
     picks = [name for name, key in (('lead_times', 'lead'), ('durations', 'duration'), ('rfi_submittal_patterns', 'coordination'), ('compare_to_current_project', 'apply'), ('past_projects', 'projects')) if w & INTENT[key]]
+    if 'durations' not in picks and w & {'long', 'days', 'many'} and not w & (INTENT['lead'] | INTENT['coordination']):
+        picks.append('durations')  # "how many days does X take" is about how long work takes
     if 'compare_to_current_project' in picks and not has_project:
         picks.remove('compare_to_current_project')
     if not picks:
         picks = ['search_history'] + (['compare_to_current_project'] if has_project and 'new' in w else [])
     return picks[:3]
+
+
+def basis_note(actual, total, noun):
+    if not total:
+        return ''
+    if actual == total:
+        return '; from actual dates'
+    if actual:
+        return f'; {actual} of {total} from actual dates, the rest from planned or expected'
+    return '; planned/expected dates only, no actual ' + noun + ' dates were recorded'
 
 
 def describe(tool, r):
@@ -286,7 +315,7 @@ def describe(tool, r):
             if g['avg_lead_time_days'] is not None:
                 bit += f", lead time about {g['avg_lead_time_days']} days"
             if g['deliveries_with_dates']:
-                bit += f", late {g['late_count']} of {g['deliveries_with_dates']} times" + (f" (about {g['avg_days_late_when_late']} days)" if g['avg_days_late_when_late'] else '')
+                bit += f", late {g['late_count']} of {g['deliveries_with_dates']} times" + (f" (about {g['avg_days_late_when_late']} days)" if g['avg_days_late_when_late'] else '') + basis_note(g['from_actual_dates'], g['deliveries_with_dates'], 'delivery')
             lines.append(bit)
         slow = [v for v in r['by_vendor'] if v['late_count']][:2]
         for v in slow:
@@ -294,7 +323,11 @@ def describe(tool, r):
     elif tool == 'durations':
         lines.append(f"From {r['found']} past activities:")
         for g in r['activities'][:6]:
-            lines.append(f"- {g['activity'].title()}: about {g['avg_days']} days (range {g['min_days']}-{g['max_days']}, {g['count']} record{'s' if g['count'] != 1 else ''})")
+            line = f"- {g['activity'].title()}: about {g['avg_days']} days (range {g['min_days']}-{g['max_days']}, {g['count']} record{'s' if g['count'] != 1 else ''})"
+            if g.get('avg_finish_vs_plan_days') is not None:
+                v = g['avg_finish_vs_plan_days']
+                line += f", finishing {abs(v)} days {'after' if v > 0 else 'before'} plan on average" if v else ', finishing on plan'
+            lines.append(line + basis_note(g['from_actual_dates'], g['count'], 'activity'))
     elif tool == 'rfi_submittal_patterns':
         for kind, d in r.items():
             if not isinstance(d, dict):
@@ -333,14 +366,12 @@ Use at most 4 tool calls. Available tools:
 
 
 def provider():
-    if settings.demo_mode or not getattr(settings, settings.ai_provider + '_api_key', ''):
-        return None
-    return AnthropicProvider() if settings.ai_provider == 'anthropic' else OpenAIProvider()
+    return get_provider() if ai_ready() else None
 
 
 def parse(raw):
     try:
-        data = json.loads(raw.strip().removeprefix('```json').removesuffix('```').strip())
+        data = extract_json(raw)
     except ValueError:
         raise HTTPException(502, 'The AI response could not be read. Please try again.')
     if not isinstance(data, dict):
@@ -354,50 +385,72 @@ def run_tool(c, name, args, project_id):
     return fn(c, query=query, project_id=project_id)
 
 
-def ask(db, user, question, project_id=None, messages=None):
-    c = Corpus(db, user)
-    project = c.projects.get(project_id) if project_id else None
+def keyword_mode(c, question, project, project_id):
     steps, results = [], []
-    llm = provider()
-    if not llm:
-        for name in route(question, bool(project)):
-            q = question if name != 'compare_to_current_project' else ''
-            r = run_tool(c, name, {'query': q}, project_id)
-            results.append((name, r))
-            steps.append({'tool': name, 'summary': step_summary(name, r)})
-        lines = [x for name, r in results for x in describe(name, r)]
-        empty = all((r.get('found') == 0) for _, r in results)
-        sources = list(c.sources.values())[:12]
-        answer = '\n'.join(lines)
-        actions = []
-        if empty and not any(c.rows.values()):
-            actions = ['Import past schedules, delivery logs or RFI logs from Excel on a project’s Records page.']
-        elif any(i['tool'] == 'compare_to_current_project' for i in steps) and sources:
-            actions = ['Review the flagged items against vendor confirmations before the next order date.']
-        return {'answer': answer, 'confidence': 'low' if empty else 'medium', 'sources': sources, 'recommended_actions': actions, 'steps': steps, 'mode': 'demo', 'used_history_records': sum(c.count().values())}
+    for name in route(question, bool(project)):
+        q = question if name != 'compare_to_current_project' else ''
+        r = run_tool(c, name, {'query': q}, project_id)
+        results.append((name, r))
+        steps.append({'tool': name, 'summary': step_summary(name, r)})
+    if all(r.get('found') == 0 for _, r in results) and not any(n == 'search_history' for n, _ in results):
+        r = run_tool(c, 'search_history', {'query': question}, project_id)  # the routed tools found nothing: try a plain search
+        results.append(('search_history', r))
+        steps.append({'tool': 'search_history', 'summary': step_summary('search_history', r)})
+    lines = [x for name, r in results for x in describe(name, r)]
+    empty = all((r.get('found') == 0) for _, r in results)
+    sources = list(c.sources.values())[:12]
+    actions = []
+    if empty and not any(c.rows.values()):
+        actions = ['Import past schedules, delivery logs or RFI logs from Excel on a project’s Records page.']
+    elif any(i['tool'] == 'compare_to_current_project' for i in steps) and sources:
+        actions = ['Review the flagged items against vendor confirmations before the next order date.']
+    return {'answer': '\n'.join(lines), 'confidence': 'low' if empty else 'medium', 'sources': sources, 'recommended_actions': actions, 'steps': steps, 'mode': 'demo', 'used_history_records': sum(c.count().values())}
+
+
+def live_mode(llm, c, question, project, project_id, messages):
+    steps = []
     system = SYSTEM + '\n'.join(f'- {n}: {d}' for n, (_, d) in TOOLS.items())
     context = {'question': question, 'current_project': {'id': project.id, 'name': project.name} if project else None,
                'archive_size': c.count(), 'conversation': [m for m in (messages or [])][-6:], 'tool_results': []}
-    for _ in range(5):
+    for _ in range(6):
         data = parse(llm.complete([{'role': 'system', 'content': system}, {'role': 'user', 'content': json.dumps(context, default=str)}]))
         if 'final' in data and isinstance(data['final'], dict):
             f = data['final']
             ids = [i for i in f.get('source_ids', []) if isinstance(i, str) and i in c.sources] if isinstance(f.get('source_ids'), list) else []
-            if not isinstance(f.get('answer'), str):
+            if not isinstance(f.get('answer'), str) or not f['answer'].strip():
                 raise HTTPException(502, 'The AI response could not be verified. Please try again.')
             actions = [a for a in f.get('recommended_actions', []) if isinstance(a, str)][:5] if isinstance(f.get('recommended_actions'), list) else []
             conf = f.get('confidence') if f.get('confidence') in ('low', 'medium', 'high') else 'low'
-            return {'answer': f['answer'], 'confidence': conf if ids or not results else 'low', 'sources': [c.sources[i] for i in dict.fromkeys(ids)], 'recommended_actions': actions, 'steps': steps, 'mode': 'live', 'used_history_records': sum(c.count().values())}
+            if not ids:  # nothing valid cited: show what the tools actually found
+                ids, conf = list(c.sources)[:6], 'low'
+            return {'answer': f['answer'], 'confidence': conf, 'sources': [c.sources[i] for i in dict.fromkeys(ids)], 'recommended_actions': actions, 'steps': steps, 'mode': 'live', 'used_history_records': sum(c.count().values())}
         name = data.get('tool')
-        if name not in TOOLS or len(steps) >= 4:
-            context['tool_results'].append({'note': 'Finish now with a final answer.'})
-            if len(steps) >= 4:
-                continue
+        if name not in TOOLS:
             raise HTTPException(502, 'The AI asked for something unavailable. Please try again.')
+        if len(steps) >= 4:
+            context['tool_results'].append({'note': 'Tool limit reached. Reply now with {"final": ...} using what you have.'})
+            continue
         r = run_tool(c, name, data.get('args') or {}, project_id)
         steps.append({'tool': name, 'summary': step_summary(name, r)})
         context['tool_results'].append({'tool': name, 'result': r, 'record_ids': list(c.sources)[-30:]})
     raise HTTPException(502, 'The analysis did not finish. Please try again.')
+
+
+def ask(db, user, question, project_id=None, messages=None):
+    c = Corpus(db, user)
+    project = c.projects.get(project_id) if project_id else None
+    llm = provider()
+    if not llm:
+        return keyword_mode(c, question, project, project_id)
+    try:
+        return live_mode(llm, c, question, project, project_id, messages)
+    except (HTTPException, KeyError, ValueError, TypeError):
+        # A busy or confused model must not break the conversation: answer from the records directly.
+        c.sources.clear()
+        result = keyword_mode(c, question, project, project_id)
+        result['mode'] = 'fallback'
+        result['notice'] = 'The AI model did not answer this time, so this is a straight lookup of your records.'
+        return result
 
 
 def step_summary(name, r):

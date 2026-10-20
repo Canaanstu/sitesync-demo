@@ -21,10 +21,41 @@ class OpenAIProvider(LLMProvider):
         return data['choices'][0]['message']['content']
 
 
+class CompatibleProvider(LLMProvider):
+    """Any server that speaks the OpenAI chat-completions protocol (Groq, OpenRouter, Gemini, Ollama)."""
+    def complete(self, messages):
+        body = {'model': settings.llm_model, 'messages': messages, 'temperature': 0.2}
+        if settings.llm_json_mode:
+            body['response_format'] = {'type': 'json_object'}
+        headers = {'Authorization': 'Bearer ' + settings.llm_api_key} if settings.llm_api_key else {}
+        data = request('POST', settings.llm_base_url.rstrip('/') + '/chat/completions', headers=headers, json=body).json()
+        return data['choices'][0]['message']['content']
+
+
 class AnthropicProvider(LLMProvider):
     def complete(self, messages):
         data = request('POST', 'https://api.anthropic.com/v1/messages', headers={'x-api-key': settings.anthropic_api_key, 'anthropic-version': '2023-06-01'}, json={'model': settings.anthropic_model, 'max_tokens': 1800, 'system': messages[0]['content'], 'messages': messages[1:]}).json()
         return ''.join(x['text'] for x in data['content'] if x['type'] == 'text')
+
+
+def ai_ready():
+    if settings.ai_provider == 'compatible':
+        local = any(h in settings.llm_base_url for h in ('localhost', '127.0.0.1', '[::1]'))
+        return bool(settings.llm_base_url and settings.llm_model and (settings.llm_api_key or local))
+    return bool(getattr(settings, settings.ai_provider + '_api_key', ''))
+
+
+def get_provider():
+    return {'anthropic': AnthropicProvider, 'compatible': CompatibleProvider}.get(settings.ai_provider, OpenAIProvider)()
+
+
+def extract_json(raw):
+    """Free models often wrap the JSON in prose or code fences; take the outermost object."""
+    text = (raw or '').strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+    start, end = text.find('{'), text.rfind('}')
+    if start == -1 or end <= start:
+        raise ValueError('no json')
+    return json.loads(text[start:end + 1])
 
 
 def embed(texts):
@@ -62,19 +93,24 @@ def retrieve(db, project_id, question):
 
 def parse_answer(raw, evidence):
     try:
-        result = json.loads(raw.strip().removeprefix('```json').removesuffix('```').strip())
-        if not isinstance(result.get('answer'), str) or result.get('confidence') not in ('low', 'medium', 'high'):
+        result = extract_json(raw)
+        if not isinstance(result.get('answer'), str) or not result['answer'].strip():
             raise ValueError()
-        ids = result.get('source_ids', [])
+        if 'could not verify' in result['answer'].lower():
+            return unsupported()
         allowed = {s['id']: s for s in evidence}
+        ids = result.get('source_ids', [])
         if not isinstance(ids, list) or any(not isinstance(i, str) or i not in allowed for i in ids):
+            raise ValueError()  # a citation we did not supply is never shown
+        if not ids:
+            return unsupported()
+        confidence = result.get('confidence')
+        if confidence not in ('low', 'medium', 'high'):
             raise ValueError()
         actions = result.get('recommended_actions', [])
         if not isinstance(actions, list) or any(not isinstance(a, str) for a in actions):
             raise ValueError()
-        if not ids:
-            return unsupported()
-        return {'answer': result['answer'], 'confidence': result['confidence'], 'sources': [{k: v for k, v in allowed[i].items() if k != 'data'} for i in dict.fromkeys(ids)], 'recommended_actions': actions}
+        return {'answer': result['answer'], 'confidence': confidence, 'sources': [{k: v for k, v in allowed[i].items() if k != 'data'} for i in dict.fromkeys(ids)], 'recommended_actions': actions}
     except (ValueError, TypeError, AttributeError):
         raise HTTPException(502, 'The AI response could not be verified. Please try again.')
 
@@ -83,28 +119,36 @@ def unsupported():
     return {'answer': 'I could not verify this from the available project data.', 'confidence': 'low', 'sources': [], 'recommended_actions': []}
 
 
-def answer(db, project_id, question, task='chat', risk=None):
-    evidence = retrieve(db, project_id, question)
+def keyword_answer(evidence, task, risk, note=''):
+    if task.startswith('draft') and risk:
+        text = (f'Subject: Follow-up - {risk.title}\n\nHello team,\n\n{risk.description}\n\nPlease {risk.recommended_action[0].lower() + risk.recommended_action[1:]}\nPlease confirm the current status and a response date so we can coordinate upcoming work.\n\nThank you,\nProject team' if task == 'draft-email' else f'Subject: {risk.title}\n\nBackground: {risk.description}\n\nQuestion: Please clarify the outstanding issue and confirm the required information for the affected work.\n\nReferences: See the linked source records.\nRequested response date: Please confirm with the project manager.')
+    else:
+        lines = []
+        for e in evidence[:5]:
+            d = e['data']
+            detail = d.get('description') or d.get('text') or d.get('body_text') or d.get('question') or f"Status: {d.get('status', 'not recorded')}. Required/start date: {d.get('required_on_site_date') or d.get('start_date') or d.get('due_date') or 'not recorded'}."
+            lines.append(f"{e['label']}: {detail}")
+        text = (note + '\n\n' if note else '') + 'From the available project records:\n\n' + '\n\n'.join(lines) + '\n\nThis summarizes matching records; confirm dependencies with the project team.'
+    return {'answer': text, 'confidence': 'medium', 'sources': [{k: v for k, v in e.items() if k != 'data'} for e in evidence[:5]], 'recommended_actions': [risk.recommended_action] if risk else ['Review the linked records and confirm the current status.'], 'mode': 'demo'}
+
+
+def answer(db, project_id, question, task='chat', risk=None, context=''):
+    """context: the previous question, so a short follow-up like "and the millwork?" still finds its records."""
+    evidence = retrieve(db, project_id, (context + ' ' + question).strip())
     if risk:
         evidence = [{'id': risk.id, 'type': 'risks', 'label': risk.title, 'data': public(risk)}]
+    ready = ai_ready()
     if not evidence:
-        return {**unsupported(), 'mode': 'demo' if settings.demo_mode else 'live'}
-    if settings.demo_mode:
-        if task.startswith('draft') and risk:
-            text = (f'Subject: Follow-up - {risk.title}\n\nHello team,\n\n{risk.description}\n\nPlease {risk.recommended_action[0].lower() + risk.recommended_action[1:]}\nPlease confirm the current status and a response date so we can coordinate upcoming work.\n\nThank you,\nProject team' if task == 'draft-email' else f'Subject: {risk.title}\n\nBackground: {risk.description}\n\nQuestion: Please clarify the outstanding issue and confirm the required information for the affected work.\n\nReferences: See the linked source records.\nRequested response date: Please confirm with the project manager.')
-        else:
-            lines = []
-            for e in evidence[:5]:
-                d = e['data']
-                detail = d.get('description') or d.get('text') or d.get('body_text') or d.get('question') or f"Status: {d.get('status', 'not recorded')}. Required/start date: {d.get('required_on_site_date') or d.get('start_date') or d.get('due_date') or 'not recorded'}."
-                lines.append(f"{e['label']}: {detail}")
-            text = 'From the available project records:\n\n' + '\n\n'.join(lines) + '\n\nThis demo summarizes matching records; confirm dependencies with the project team.'
-        return {'answer': text, 'confidence': 'medium', 'sources': [{k: v for k, v in e.items() if k != 'data'} for e in evidence[:5]], 'recommended_actions': [risk.recommended_action] if risk else ['Review the linked records and confirm the current status.'], 'mode': 'demo'}
-    provider = AnthropicProvider() if settings.ai_provider == 'anthropic' else OpenAIProvider()
-    if not getattr(settings, settings.ai_provider + '_api_key', ''):
+        return {**unsupported(), 'mode': 'live' if ready else 'demo'}
+    if not ready:
+        if settings.demo_mode:
+            return keyword_answer(evidence, task, risk)
         raise HTTPException(409, 'Configure the selected AI provider in the backend environment.')
     try:
-        raw = provider.complete([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': json.dumps({'task': task, 'question': question, 'evidence': evidence}, default=str)}])
+        raw = get_provider().complete([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': json.dumps({'task': task, 'question': question, 'earlier_question': context or None, 'evidence': evidence}, default=str)}])
         return {**parse_answer(raw, evidence), 'mode': 'live'}
-    except (KeyError, IndexError):
-        raise HTTPException(502, 'The AI provider returned an unexpected response. Please retry.')
+    except (KeyError, IndexError, HTTPException, ValueError):
+        # A busy, rate-limited or confused model must not break the chat: show the matching records instead.
+        result = keyword_answer(evidence, task, risk, 'The AI model did not answer this time, so here are the matching records.')
+        result['mode'] = 'fallback'
+        return result

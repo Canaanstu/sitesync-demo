@@ -1,14 +1,14 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
-import {History,Send,Sparkles,Check,ArrowRight} from 'lucide-react';
+import {History,Send,Sparkles,Check,ArrowRight,Trash2} from 'lucide-react';
 import {api,Row} from '../lib/api';
 
 type Turn={role:'user'|'assistant',content:string,data?:Row};
 const short=(name:string)=>name.split('|')[0].trim();
 
 export function HistoryAgent({projects}:{projects:Row[]}){
- const [pid,setPid]=useState(''),[turns,setTurns]=useState<Turn[]>([]),[text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),end=useRef<HTMLDivElement>(null);
+ const [pid,setPid]=useState(''),[turns,setTurns]=useState<Turn[]>([]),[text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[confirmClear,setConfirmClear]=useState(false),end=useRef<HTMLDivElement>(null);
  const overview=useQuery({queryKey:['history-overview',pid],queryFn:()=>api<Row>(`/history/overview${pid?`?project_id=${pid}`:''}`)});
  useEffect(()=>{end.current?.scrollIntoView({block:'nearest',behavior:'smooth'})},[turns,busy]);
  const total=overview.data?.total||0,archive=(overview.data?.projects||[]) as Row[];
@@ -22,7 +22,7 @@ export function HistoryAgent({projects}:{projects:Row[]}){
  }
  return <div className="hist-agent">
   <div className="hist-top"><div><h1>History</h1><p className="muted">Ask what happened on past projects, and what it means for the one you’re starting.</p></div>
-   <label className="hist-for">Planning for<select value={pid} onChange={e=>{setPid(e.target.value);setTurns([]);setError('')}}><option value="">No specific project</option>{projects.map(p=><option key={p.id} value={p.id}>{short(p.name)}</option>)}</select></label></div>
+   <div className="hist-tools">{!!turns.length&&<button className={'clear-chat'+(confirmClear?' danger':'')} disabled={busy} onClick={()=>{if(!confirmClear){setConfirmClear(true);return}setTurns([]);setError('');setConfirmClear(false)}} onBlur={()=>setConfirmClear(false)}><Trash2 size={15}/>{confirmClear?'Tap again to clear':'Clear chat'}</button>}<label className="hist-for">Planning for<select value={pid} onChange={e=>{setPid(e.target.value);setTurns([]);setError('')}}><option value="">No specific project</option>{projects.map(p=><option key={p.id} value={p.id}>{short(p.name)}</option>)}</select></label></div></div>
   <div className="chips">{overview.isLoading?<span className="chip">Reading the archive…</span>:total?<><span className="chip"><History size={13}/>{total} past records</span>{archive.slice(0,4).map(p=><span className="chip" key={p.project}>{p.project}</span>)}{archive.length>4&&<span className="chip">+{archive.length-4} more</span>}</>:<span className="chip warn">No past records yet</span>}</div>
   {!overview.isLoading&&!total&&<section className="panel hist-empty"><b>Nothing to learn from yet</b><p className="muted">Open a past project, go to its Records page and choose <b>Import Excel</b> to bring in old schedules, delivery logs, RFIs and submittals. Then ask questions here. Past projects stay private to your company.</p></section>}
   <div className="hist-thread" aria-live="polite">

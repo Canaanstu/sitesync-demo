@@ -207,7 +207,10 @@ def progress(project_id: str,activity_id: str,body: Progress,db: Session=Db,user
     if (a.raw_json or {}).get('progress_source',{}).get('kind') in ('inspection','delivery'):
         raise HTTPException(409,'This milestone updates from its linked evidence. Choose field progress to enter a manual value.')
     a.percent_complete=body.percent_complete
-    a.raw_json={**(a.raw_json or {}),'actual_finish':local_today(p).isoformat() if body.percent_complete==100 else None}
+    raw=a.raw_json or {}
+    today=local_today(p).isoformat()
+    # Actual dates are kept as work happens so later projects can learn from real durations, not just the plan.
+    a.raw_json={**raw,'actual_start':(raw.get('actual_start') or today) if body.percent_complete>0 else None,'actual_finish':today if body.percent_complete==100 else None}
     record_audit(db,user,'activity.progress',project_id,a.id)
     db.commit()
     return public(a)
@@ -404,7 +407,7 @@ def purchases(project_id:str,db:Session=Db,user=Auth):
 
 @router.post('/procurement')
 def purchase(project_id:str,body:Purchase,db:Session=Db,user=Auth):
-    access(db,user,project_id,True)
+    p=access(db,user,project_id,True)
     validate_links(db,project_id,body.activity_ids)
     if body.submittal_id:
         get_row(db,Submittal,project_id,body.submittal_id)
@@ -445,6 +448,15 @@ class Package(BaseModel):
     status: Literal['ordered','in transit','delayed','received']='ordered'
 
 
+def stamp_delivery(item,today):
+    raw=dict(item.raw_json or {})
+    if item.status=='delivered':
+        raw['actual_delivery']=raw.get('actual_delivery') or today
+    else:
+        raw.pop('actual_delivery',None)
+    item.raw_json=raw
+
+
 def update_delivery(db,item):
     packages=[r for r in entries(db,item.project_id,'package') if r.data['procurement_id']==item.id]
     if packages and all(r.status=='received' for r in packages):
@@ -453,6 +465,7 @@ def update_delivery(db,item):
         item.status='ordered' if all(r.status=='ordered' for r in packages) else 'in transit'
         remaining=[r.data.get('eta') for r in packages if r.status!='received']
         item.expected_delivery_date=max(remaining) if remaining and all(remaining) else None
+    stamp_delivery(item,local_today(db.get(Project,item.project_id)).isoformat())
 
 
 @router.post('/packages')

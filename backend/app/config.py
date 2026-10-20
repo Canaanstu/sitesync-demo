@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ''
     anthropic_model: str = 'claude-sonnet-4-5'
     ai_provider: str = 'openai'
+    # Any OpenAI-compatible chat endpoint: Groq, OpenRouter, Google's compatibility endpoint, or a local Ollama.
+    llm_base_url: str = ''
+    llm_api_key: str = ''
+    llm_model: str = ''
+    llm_json_mode: bool = True
+    # Shortcut: a free Groq key alone is enough (https://console.groq.com/keys).
+    groq_api_key: str = ''
     bootstrap_email: str = ''
     bootstrap_password: str = ''
     # Hosted demos retain fictional data, but never use the published local login.
@@ -58,8 +65,14 @@ if settings.private_demo:
         raise RuntimeError('Private hosting requires explicit signing and encryption secrets.')
     if not settings.app_url.startswith('https://') or not settings.api_url.startswith('https://'):
         raise RuntimeError('Private hosting requires HTTPS URLs.')
-if settings.ai_provider not in ('openai', 'anthropic'):
-    raise RuntimeError('AI_PROVIDER must be openai or anthropic.')
+if settings.groq_api_key and not settings.llm_api_key:
+    settings.llm_api_key = settings.groq_api_key
+    settings.llm_base_url = settings.llm_base_url or 'https://api.groq.com/openai/v1'
+    settings.llm_model = settings.llm_model or 'llama-3.3-70b-versatile'
+    if settings.ai_provider == 'openai' and not settings.openai_api_key:
+        settings.ai_provider = 'compatible'
+if settings.ai_provider not in ('openai', 'anthropic', 'compatible'):
+    raise RuntimeError('AI_PROVIDER must be openai, anthropic or compatible.')
 if not settings.demo_mode and (not settings.jwt_secret or not settings.token_encryption_key):
     raise RuntimeError('Live mode requires explicit JWT_SECRET and TOKEN_ENCRYPTION_KEY shared by all backend services.')
 # Serverless hosts (Vercel) have a read-only filesystem and provide Postgres as POSTGRES_URL / DATABASE_URL.

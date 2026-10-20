@@ -22,7 +22,7 @@ from .security import *
 from .seed import initialize, seed_project, seed_workspace
 from .mailer import mail_enabled, send_email
 from .accounts import delete_workspace
-from .risk_engine import run_rules
+from .risk_engine import run_rules, words
 from .connectors import OAuthConnector, save_tokens, valid_token, Procore, Microsoft
 from .parsing import parse_table, parse_document
 from .sync import sync_project, ingest_rows, generate_embeddings
@@ -822,6 +822,16 @@ def history(project_id: str, db: Session = Db, user=Auth):
     return [public(m) for m in db.scalars(select(Message).where(Message.project_id == project_id, Message.user_id == user.id).order_by(Message.created_at).limit(100))]
 
 
+@app.delete('/api/projects/{project_id}/ai/history')
+def clear_history(project_id: str, db: Session = Db, user=Auth):
+    """People clear their own conversation only; nobody else's is touched."""
+    project_access(db, user, project_id)
+    removed = db.execute(delete(Message).where(Message.project_id == project_id, Message.user_id == user.id)).rowcount
+    audit(db, user, 'ai.clear_history', {'project_id': project_id, 'count': removed})
+    db.commit()
+    return {'removed': removed}
+
+
 @app.post('/api/projects/{project_id}/ai/{task}')
 def ai_request(project_id: str, task: str, body: AIRequest, db: Session = Db, user=Auth):
     project_access(db, user, project_id)
@@ -837,7 +847,11 @@ def ai_request(project_id: str, task: str, body: AIRequest, db: Session = Db, us
         risk = db.get(Risk, body.risk_id)
     elif not body.question.strip():
         raise HTTPException(422, 'Enter a project question.')
-    result = answer(db, project_id, body.question or risk.title, task, risk)
+    context = ''
+    if task == 'chat' and len(words(body.question)) < 4:
+        prior = db.scalar(select(Message).where(Message.project_id == project_id, Message.user_id == user.id, Message.role == 'user').order_by(Message.created_at.desc()))
+        context = (prior.content if prior and not prior.content.startswith(('draft-', 'explain-')) else '')[:300]
+    result = answer(db, project_id, body.question or risk.title, task, risk, context)
     db.add_all([Message(project_id=project_id, user_id=user.id, role='user', content=body.question or f'{task}: {risk.title}'), Message(project_id=project_id, user_id=user.id, role='assistant', content=result['answer'], sources=result['sources'])])
     audit(db, user, 'ai.' + task, {'project_id': project_id, 'mode': result['mode']})
     db.commit()

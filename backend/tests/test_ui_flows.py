@@ -310,3 +310,143 @@ def test_history_agent_generic_questions(c):
         assert 'Switchgear' in r['answer'] and 'Doors' in r['answer'], r['answer']
     miss = ok(c.post('/api/history/ask', json={'question': 'How long does asphalt take to arrive?'}))
     assert 'asphalt' in miss['answer'] and miss['confidence'] == 'low'
+
+
+class FakeLLM:
+    """Stands in for an OpenAI-compatible server (Groq, Ollama...). `replies` are returned in order."""
+    def __init__(self, replies):
+        self.replies, self.calls = list(replies), []
+
+    def __call__(self, method, url, **kw):
+        self.calls.append((url, kw))
+        reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        class R:
+            def json(_):
+                return {'choices': [{'message': {'content': reply}}]}
+        return R()
+
+
+def use_free_model(monkeypatch, replies):
+    from app import ai
+    for k, v in dict(ai_provider='compatible', llm_base_url='https://api.groq.com/openai/v1', llm_model='llama-3.3-70b-versatile', llm_api_key='free-key').items():
+        monkeypatch.setattr(settings, k, v)
+    fake = FakeLLM(replies)
+    monkeypatch.setattr(ai, 'request', fake)
+    return fake
+
+
+def test_project_chat_with_free_model_and_fallback(c, monkeypatch):
+    import json
+    from fastapi import HTTPException
+    pid = project(c)
+    evidence_id = ok(c.post(f'/api/projects/{pid}/ai/chat', json={'question': 'What is blocking work today?'}))['sources'][0]['id']
+    answer = json.dumps({'answer': 'The lighting controls order is late.', 'confidence': 'high', 'source_ids': [evidence_id], 'recommended_actions': ['Call the vendor']})
+    fake = use_free_model(monkeypatch, ['Sure! Here you go:\n```json\n' + answer + '\n```', 'not json at all', HTTPException(502, 'busy')])
+    r = ok(c.post(f'/api/projects/{pid}/ai/chat', json={'question': 'What is blocking work today?'}))
+    assert r['mode'] == 'live' and r['answer'].startswith('The lighting controls') and r['sources'][0]['id'] == evidence_id
+    url, kw = fake.calls[0]
+    assert url == 'https://api.groq.com/openai/v1/chat/completions' and kw['headers']['Authorization'] == 'Bearer free-key' and kw['json']['model'] == 'llama-3.3-70b-versatile'
+    # garbage from the model, then a provider outage: the chat still answers from the records
+    for _ in range(2):
+        r = ok(c.post(f'/api/projects/{pid}/ai/chat', json={'question': 'Which deliveries could delay turnover?'}))
+        assert r['mode'] == 'fallback' and 'matching records' in r['answer'] and r['sources']
+
+
+def test_followup_uses_previous_question(c):
+    pid = project(c)
+    ok(c.post(f'/api/projects/{pid}/ai/chat', json={'question': 'Tell me about the lighting controls order'}))
+    r = ok(c.post(f'/api/projects/{pid}/ai/chat', json={'question': 'and the risks?'}))
+    assert r['sources'] and 'ighting' in r['answer']
+
+
+def test_history_agent_with_free_model(c, monkeypatch):
+    import json
+    from fastapi import HTTPException
+    from app import ai
+    past_id = ok(c.post('/api/projects', json={'name': 'Old Job'}))['id']
+    log = 'Item,Vendor,Need By,Expected Delivery,Lead Time,Status\nSwitchgear,Eaton,2023-03-01,2023-03-20,84,delivered\n'
+    ok(c.post(f'/api/projects/{past_id}/import', files={'file': ('log.csv', log.encode(), 'text/csv')}))
+    use_free_model(monkeypatch, [])
+    calls = []
+
+    def model(method, url, **kw):
+        calls.append(kw)
+        if len(calls) == 1:  # step 1: the model asks for the lead-time tool
+            reply = json.dumps({'tool': 'lead_times', 'args': {'query': 'switchgear'}})
+        else:  # step 2: it answers, citing a record id from the tool result plus one it made up
+            seen = json.loads(kw['json']['messages'][1]['content'])['tool_results'][0]['record_ids'][0]
+            reply = json.dumps({'final': {'answer': 'Switchgear took about 84 days (1 record).', 'confidence': 'medium', 'source_ids': [seen, 'made-up-id'], 'recommended_actions': []}})
+
+        class R:
+            def json(_):
+                return {'choices': [{'message': {'content': reply}}]}
+        return R()
+    monkeypatch.setattr(ai, 'request', model)
+    r = ok(c.post('/api/history/ask', json={'question': 'How long does switchgear take?'}))
+    assert r['mode'] == 'live' and '84 days' in r['answer'] and r['steps'][0]['tool'] == 'lead_times'
+    assert [s['label'] for s in r['sources']] == ['Switchgear']  # the invented id never reaches the person
+    monkeypatch.setattr(ai, 'request', FakeLLM([HTTPException(502, 'busy')]))
+    r = ok(c.post('/api/history/ask', json={'question': 'How long does switchgear take?'}))
+    assert r['mode'] == 'fallback' and 'Switchgear' in r['answer'] and r['notice']
+
+
+def test_history_uses_actual_dates_when_present(c):
+    past_id = ok(c.post('/api/projects', json={'name': 'Actuals Job'}))['id']
+    log = ('Item,Vendor,Need By,Expected Delivery,Actual Delivery,Lead Time,Status\n'
+           'Chillers,Trane,2023-03-01,2023-03-01,2023-03-29,70,delivered\nChillers,Trane,2023-08-01,2023-08-01,2023-08-15,70,delivered\n')
+    sched = 'Task,Planned Start,Planned Finish,Actual Start,Actual Finish\nSet chillers,2023-04-01,2023-04-10,2023-04-05,2023-04-24\n'
+    prev = ok(c.post(f'/api/projects/{past_id}/import/preview', files={'file': ('l.csv', log.encode(), 'text/csv')}))
+    assert prev['sheets'][0]['mapping']['actual_delivery'] == 4 and prev['sheets'][0]['mapping']['expected_delivery_date'] == 3
+    ok(c.post(f'/api/projects/{past_id}/import', files={'file': ('l.csv', log.encode(), 'text/csv')}))
+    prev = ok(c.post(f'/api/projects/{past_id}/import/preview', files={'file': ('s.csv', sched.encode(), 'text/csv')}))['sheets'][0]
+    assert prev['mapping']['finish_date'] == 2 and prev['mapping']['actual_finish'] == 4  # "Actual Finish" is not mistaken for the planned finish
+    ok(c.post(f'/api/projects/{past_id}/import', files={'file': ('s.csv', sched.encode(), 'text/csv')}))
+    late = ok(c.post('/api/history/ask', json={'question': 'Are chiller deliveries late?'}))
+    assert 'late 2 of 2' in late['answer'] and 'from actual dates' in late['answer'] and 'about 21 days' in late['answer']  # (28 + 14) / 2
+    dur = ok(c.post('/api/history/ask', json={'question': 'How many days does setting chillers take?'}))
+    assert 'about 20 days' in dur['answer'] and '14 days after plan' in dur['answer'] and 'from actual dates' in dur['answer']
+
+
+def test_actual_dates_are_stamped_in_app_and_chat_can_be_cleared(c):
+    pid = project(c)
+    ok(c.post(f'/api/projects/{pid}/uploads/procurement-log', files={'file': ('p.csv', b'name,status,required_on_site_date,lead_time_days\nStamp test unit,ordered,2026-12-01,20\n', 'text/csv')}))
+    item = next(i for i in ok(c.get(f'/api/projects/{pid}/ops/procurement'))['items'] if i['name'] == 'Stamp test unit')
+    body = {k: item[k] for k in ('name', 'vendor', 'status', 'lead_time_days', 'required_on_site_date', 'expected_delivery_date', 'submittal_id') if item.get(k) is not None}
+    body.update(status='delivered', activity_ids=item.get('activity_ids') or [], vendor_email=item.get('vendor_email') or '')
+    stamped = ok(c.patch(f'/api/projects/{pid}/ops/procurement/{item["id"]}', json=body))
+    assert stamped['raw_json']['actual_delivery']
+    body['status'] = 'ordered'
+    assert 'actual_delivery' not in ok(c.patch(f'/api/projects/{pid}/ops/procurement/{item["id"]}', json=body))['raw_json']
+    ok(c.post(f'/api/projects/{pid}/ai/chat', json={'question': 'What is blocking work today?'}))
+    assert len(ok(c.get(f'/api/projects/{pid}/ai/history'))) == 2
+    assert ok(c.delete(f'/api/projects/{pid}/ai/history'))['removed'] == 2
+    assert ok(c.get(f'/api/projects/{pid}/ai/history')) == []
+    assert c.delete('/api/projects/nope/ai/history').status_code == 404
+
+
+def test_sample_projects_are_internally_consistent(c):
+    """A construction reader should not find contradictions in the sample data."""
+    from datetime import date
+    today = date.today().isoformat()
+    names = {}
+    for proj in ok(c.get('/api/projects')):
+        board = ok(c.get(f'/api/projects/{proj["id"]}/ops/procurement'))
+        sched = ok(c.get(f'/api/projects/{proj["id"]}/ops/board'))
+        names[proj['name']] = [i['name'] for i in board['items']]
+        for a in sched['activities']:
+            assert not (a['start_date'] > today and (a['percent_complete'] or 0) > 0), f'{proj["name"]}: {a["name"]} is in progress but starts in the future'
+        for i in board['items']:
+            if i['status'] == 'delivered':
+                assert (i['expected_delivery_date'] or today) <= today, f'{i["name"]} is delivered but its date is in the future'
+            if i['status'] in ('ordered', 'in transit', 'delivered') and i.get('submittal'):
+                assert i['submittal']['status'] in ('approved', 'approved as noted'), f'{i["name"]} ordered before its submittal was approved'
+            need = i['schedule_need_date']
+            for link in i['linked_activities']:
+                starts = [a['start_date'] for a in sched['activities'] if a['name'] == link]
+                assert not starts or (i['required_on_site_date'] or need) <= min(starts), f'{i["name"]} is required on site after {link} starts'
+    assert 'Lighting controls' in names['Alo Yoga'] and 'Lighting controls' not in names['Sage and Sound']
+    assert any('sauna' in n.lower() for n in names['Sage and Sound'])
+    sage = next(p['id'] for p in ok(c.get('/api/projects')) if p['name'] == 'Sage and Sound')
+    assert 'Alo' not in str(ok(c.get(f'/api/projects/{sage}/emails')))

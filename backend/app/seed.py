@@ -8,24 +8,24 @@ from .config import settings
 
 def seed_project(db, organization_id, name='Alo Greenwich | Retail Fit-Out'):
     d = lambda offset: (date.today() + timedelta(days=offset)).isoformat()
-    p = Project(organization_id=organization_id, name=name, external_source='demo', start_date=d(-90), finish_date=d(45), settings={'aliases': ['Alo Greenwich', 'Project 24017'], 'email_keywords': ['Greenwich'], 'sync_enabled': True, 'sync_minutes': 15})
+    p = Project(organization_id=organization_id, name=name, external_source='demo', start_date=d(-30), finish_date=d(60), settings={'aliases': ['Alo Yoga', 'Alo Greenwich', 'Project 24017'], 'email_keywords': ['Greenwich'], 'sync_enabled': True, 'sync_minutes': 15})
     db.add(p)
     db.flush()
     s = Submittal(project_id=p.id, number='037', title='Lighting controls', status='under review', due_date=d(-5), ball_in_court='Northline Design', spec_section='26 09 23')
-    db.add(s)
+    shop = Submittal(project_id=p.id, number='041', title='Custom millwork shop drawings', status='approved', due_date=d(-12), ball_in_court='Oak Studio', spec_section='06 40 00')
+    db.add_all([s, shop])
     db.flush()
     db.add_all([
         Procurement(project_id=p.id, name='Lighting controls', vendor='Lumen Supply (demo)', status='not released', lead_time_days=42, required_on_site_date=d(14), expected_delivery_date=d(35), submittal_id=s.id, notes='Awaiting approval of control package.'),
-        Procurement(project_id=p.id, name='Custom millwork', vendor='Oak Studio (demo)', status='ordered', lead_time_days=28, required_on_site_date=d(18), expected_delivery_date=d(23)),
-        Procurement(project_id=p.id, name='Floor tile', vendor='Stone & Co (demo)', status='delivered', lead_time_days=14, required_on_site_date=d(7), expected_delivery_date=d(-2)),
-        Activity(project_id=p.id, activity_id='A-210', name='Ceiling close and lighting installation', trade='Electrical', start_date=d(5), finish_date=d(10), percent_complete=0),
-        Activity(project_id=p.id, activity_id='A-240', name='Custom millwork installation', trade='Millwork', start_date=d(18), finish_date=d(22), percent_complete=0),
-        Activity(project_id=p.id, activity_id='A-260', name='Floor tile installation', trade='Flooring', start_date=d(7), finish_date=d(12), percent_complete=25),
+        Procurement(project_id=p.id, name='Custom millwork', vendor='Oak Studio (demo)', status='ordered', lead_time_days=28, required_on_site_date=d(24), expected_delivery_date=d(29), submittal_id=shop.id, notes='Shop drawings approved; ordered.'),
+        Procurement(project_id=p.id, name='Floor tile', vendor='Stone & Co (demo)', status='delivered', lead_time_days=14, required_on_site_date=d(-1), expected_delivery_date=d(-2), raw_json={'actual_delivery': d(-2)}),
+        Activity(project_id=p.id, activity_id='A-210', name='Ceiling close and lighting installation', trade='Electrical', start_date=d(14), finish_date=d(19), percent_complete=0),
+        Activity(project_id=p.id, activity_id='A-240', name='Custom millwork installation', trade='Millwork', start_date=d(24), finish_date=d(28), percent_complete=0),
+        Activity(project_id=p.id, activity_id='A-260', name='Floor tile installation', trade='Flooring', start_date=d(-1), finish_date=d(4), percent_complete=25, raw_json={'actual_start': d(-1)}),
         RFI(project_id=p.id, number='042', subject='Ceiling coordination at fitting rooms', question='Please confirm ceiling height and lighting fixture coordination before close.', status='open', due_date=d(-2), ball_in_court='Northline Design'),
         RFI(project_id=p.id, number='038', subject='Storefront finish confirmation', question='Confirm finish.', response='Finish confirmed.', status='closed', due_date=d(-10)),
-        Submittal(project_id=p.id, number='041', title='Custom millwork shop drawings', status='submitted', due_date=d(-3), ball_in_court='Oak Studio'),
-        Email(project_id=p.id, subject='Alo Greenwich - revised ship date for millwork', sender_email='supplier@example.com', sender_name='Demo Supplier', received_at=now(), body_text='The revised ship date is five days after the planned installation. Please review options for expedited shipping.'),
-        Email(project_id=p.id, subject='Alo Greenwich - weekly coordination', sender_email='pm@example.com', sender_name='Demo Project Manager', received_at=now(), body_text='Please review the lighting controls and ceiling coordination items before the next meeting.'),
+        Email(project_id=p.id, subject='Alo Yoga - revised ship date for millwork', sender_email='supplier@example.com', sender_name='Demo Supplier', received_at=now(), body_text='The revised ship date is five days after the planned installation. Please review options for expedited shipping.'),
+        Email(project_id=p.id, subject='Alo Yoga - weekly coordination', sender_email='pm@example.com', sender_name='Demo Project Manager', received_at=now(), body_text='Please review the lighting controls and ceiling coordination items before the next meeting.'),
     ])
     doc = Document(project_id=p.id, filename='Demo coordination notes.txt', file_type='txt', raw_text='Ceiling close requires confirmation of RFI 042. Lighting controls approval remains outstanding. These are fictional demonstration notes.')
     db.add(doc)
@@ -84,14 +84,16 @@ def seed_workspace(db,org):
     if not alo:
         alo=seed_project(db,org.id,'Alo Yoga')
     if not sage:
-        sage=seed_project(db,org.id,'Sage and Sound')
+        sage=Project(organization_id=org.id,name='Sage and Sound',external_source='demo',status='active',settings={'aliases':['Sage and Sound'],'sync_enabled':False})
+        db.add(sage)
+        db.flush()
     for p,name,kind in [(alo,'Alo Yoga','Retail fit-out'),(sage,'Sage and Sound','Wellness / spa fit-out')]:
         p.name=name
         if p.settings.get('sitesync_demo_v1'):
             continue
         p.external_source='demo'
         today=date.today()
-        p.start_date=today.isoformat()
+        p.start_date=(today-timedelta(days=30)).isoformat()
         p.finish_date=(today+timedelta(days=70 if p==sage else 60)).isoformat()
         p.settings={**p.settings,'sitesync_demo_v1':True,'city':'Greenwich, Connecticut','job_type':kind,'timezone':'America/New_York','workdays':[0,1,2,3,4],'dates_are_demo':True}
         for role,email,trades in [('architect','architect@example.com',[]),('engineer','electrical@example.com',['Electrical']),('engineer','mep@example.com',['Plumbing','Mechanical']),('project manager','pm@example.com',[])]:
