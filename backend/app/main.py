@@ -610,6 +610,9 @@ def simulated(provider):
 @app.get('/api/integrations')
 def integrations(db: Session = Db, user=Auth):
     rows = {c.provider: public(c) for c in db.scalars(select(Connection).where(Connection.organization_id == user.organization_id))}
+    # A leftover simulated Procore connection is not a real one once the live sandbox is switched on.
+    if procore_sandbox_live and rows.get('procore', {}).get('status') == 'demo':
+        rows.pop('procore')
     return [rows.get(provider, {'provider': provider, 'status': ('demo' if settings.demo_mode else 'configured' if getattr(settings, provider + '_api_key', '') else 'not connected') if provider in ('openai', 'anthropic') else 'not connected'}) for provider in ('procore', 'microsoft', 'openai', 'anthropic')]
 
 

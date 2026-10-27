@@ -131,3 +131,11 @@ def test_members_can_connect_but_only_admins_disconnect_and_viewers_cannot_conne
     with TestClient(app) as v:
         assert v.post('/api/auth/login', json={'email': 'viewer-c@x.test', 'password': 'Passw0rd-long-enough'}).status_code == 200
         assert v.post('/api/integrations/procore/connect').status_code == 403
+
+
+def test_stale_demo_procore_connection_hidden_when_sandbox_live(client, monkeypatch):
+    import app.main as main
+    client.post('/api/integrations/procore/connect')
+    assert next(i for i in client.get('/api/integrations').json() if i['provider'] == 'procore')['status'] == 'demo'
+    monkeypatch.setattr(main, 'procore_sandbox_live', True)
+    assert next(i for i in client.get('/api/integrations').json() if i['provider'] == 'procore')['status'] == 'not connected'
