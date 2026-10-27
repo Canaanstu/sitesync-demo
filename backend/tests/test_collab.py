@@ -139,3 +139,9 @@ def test_stale_demo_procore_connection_hidden_when_sandbox_live(client, monkeypa
     assert next(i for i in client.get('/api/integrations').json() if i['provider'] == 'procore')['status'] == 'demo'
     monkeypatch.setattr(main, 'procore_sandbox_live', True)
     assert next(i for i in client.get('/api/integrations').json() if i['provider'] == 'procore')['status'] == 'not connected'
+
+
+def test_procore_text_cleanup():
+    from app.sync import plain_text
+    assert plain_text('<p>Confirm the <b>height</b>.</p><p>Thanks &amp; regards</p>') == 'Confirm the height.\nThanks & regards'
+    assert plain_text(None) == ''

@@ -15,6 +15,14 @@ def match_email(email, project):
     return any(len(alias.strip()) >= 3 and alias.lower().strip() in text for alias in aliases)
 
 
+def plain_text(value):
+    """Procore sends rich text as HTML; keep the words, drop the tags."""
+    import html
+    import re
+    text = re.sub(r'<(br|/p|/div|/li)\s*/?>', '\n', str(value or ''), flags=re.I)
+    return html.unescape(re.sub(r'<[^>]+>', '', text)).strip()
+
+
 def normalize_status(value):
     if isinstance(value, dict):
         value = value.get('name') or value.get('status') or 'unknown'
@@ -75,9 +83,9 @@ def sync_project(job_id):
                     client = Procore(valid_token(db, connection), project.procore_company_id)
                     for kind, cls, records in [('RFIs', RFI, client.rfis(project.procore_project_id)), ('submittals', Submittal, client.submittals(project.procore_project_id))]:
                         for r in records:
-                            values = {'number': str(r.get('number', '')), 'status': normalize_status(r.get('status')), 'due_date': (r.get('due_date') or '')[:10] or None, 'raw_json': r}
+                            values = {'number': '' if r.get('number') is None else str(r['number']), 'status': normalize_status(r.get('status')), 'due_date': (r.get('due_date') or '')[:10] or None, 'raw_json': r}
                             if cls == RFI:
-                                values.update(subject=r.get('subject'), question=r.get('question') or ((r.get('questions') or [{}])[0].get('plain_text_body') or (r.get('questions') or [{}])[0].get('body') or ''), response=str(r.get('response') or ''))
+                                values.update(subject=r.get('subject'), question=plain_text(r.get('question') or ((r.get('questions') or [{}])[0].get('plain_text_body') or (r.get('questions') or [{}])[0].get('body') or '')), response=str(r.get('response') or ''))
                             else:
                                 values.update(title=r.get('title'), description=r.get('description'))
                             upsert(db, cls, project.id, r['id'], values)

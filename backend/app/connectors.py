@@ -21,7 +21,7 @@ def request(method, url, **kwargs):
             time.sleep(min(int(retry) if retry.isdigit() else 2, 5))
             continue
         if response.status_code in (401, 403):
-            raise HTTPException(502, 'The connection expired or lacks permission. Reconnect the provider.')
+            raise HTTPException(502, f'The connection expired or lacks permission (HTTP {response.status_code}). Reconnect the provider, and for Procore make sure the SiteSync app is installed in that Procore company (Admin > App Management).')
         if response.is_error:
             raise HTTPException(502, f'The provider rejected the request (HTTP {response.status_code}).')
         return response
