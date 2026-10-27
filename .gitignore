@@ -19,3 +19,4 @@ output/
 frontend/out/
 .DS_Store
 **/.DS_Store
+.gstack/
