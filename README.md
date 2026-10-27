@@ -56,6 +56,39 @@ See [validation notes](VALIDATION.md) and [landing-page behavior](deploy/LANDING
 
 Keep `.env`, `.local`, credentials, databases, and contact exports out of Git. AI drafts require human review. Procurement lead times and carrier updates depend on recorded source information. Received materials do not prove installation complete. Use approved integrations and separate production infrastructure before handling real contractor records.
 
+## Working together
+
+- **Schedule first.** Every project opens on its Schedule: a "Next 7 days" card, a quick note box (type or tap the mic to dictate; saved with the time, optionally tied to an activity), and "What changed".
+- **Project roles.** An admin sets each person to Superintendent, Project manager or Team member in Project settings → Access. Roles do not limit editing; they decide what the daily summary leads with (the super sees what is due, the PM sees what changed).
+- **Bulk import.** Projects → Import → tick several projects or press "Import all". Projects already imported are skipped.
+- **Daily summary, not a flood.** People get at most one email a day, only when something changed, and can turn it off in Settings. Syncs only add a feed entry when their result differs from the last one. Sending needs mail configured (see above) and `CRON_SECRET` set on the API project: `backend/vercel.json` calls `/api/digests/run` daily at 13:00 UTC, and the endpoint answers only to that secret. Without mail, the summary preview in Settings still shows what would be sent.
+
+## Procore integration
+
+SiteSync talks to Procore through OAuth (`backend/app/connectors.py`): Connect → pick company → import project → sync RFIs and submittals.
+
+**Free: Procore Developer Sandbox.** Any developer can use it, no Procore customer account needed.
+
+1. Sign up at [developers.procore.com](https://developers.procore.com), create an app, and wait a few minutes. A sandbox with a "1234 – Sandbox Test Project" (one RFI, one submittal, eight schedule tasks) is created automatically, and you get an email to set its password.
+2. On the app's Credentials tab, copy the **Sandbox** Client ID and Secret. Add `<API_URL>/api/integrations/procore/callback` as a redirect URI (for local development: `http://localhost:8000/api/integrations/procore/callback`).
+3. Set on the backend:
+   ```
+   PROCORE_ENV=sandbox            # uses login-sandbox.procore.com and sandbox.procore.com
+   PROCORE_CLIENT_ID=...
+   PROCORE_CLIENT_SECRET=...
+   PROCORE_GRANT=authorization_code   # or client_credentials: no sign-in page, uses the app's service account
+   ```
+4. In SiteSync open Tools → Connect, then Projects → Import. Procore calls are real even with `DEMO_MODE=true`; email and Microsoft stay simulated.
+
+Sandbox data is test data and cannot be refreshed. Register another app to get a clean sandbox (it has a new company id).
+
+**For a Procore customer.** A Company Admin has two options, both testing against the customer's own data:
+
+- **On-Demand Sandbox**: self-enabled in Procore Explore, with several allowed in parallel. Procore recommends it for most testing. Install the app with the *Production* installation key; the integration then uses the *Production* Client ID/Secret.
+- **Monthly Sandbox**: enabled in company General Settings and refreshed monthly from production, one per company.
+
+Keep `PROCORE_ENV=sandbox` while testing; the customer's sandbox uses the same sandbox hosts. For production use, set `PROCORE_ENV=production` (or leave it empty) with `DEMO_MODE=false`. That requires Procore's verification and production access, or a private install into the customer's own account. Check the Procore Marketplace and API terms before storing customer records.
+
 ## Free AI model
 
 SiteSync's chat and History agent work with any OpenAI-compatible endpoint, so no paid key is needed.

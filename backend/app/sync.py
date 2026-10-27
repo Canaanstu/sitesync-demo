@@ -2,7 +2,7 @@ from sqlalchemy import select
 from fastapi import HTTPException
 from .database import SessionLocal
 from .models import *
-from .config import settings
+from .config import settings, procore_sandbox_live
 from .connectors import valid_token, Procore, Microsoft
 from .risk_engine import run_rules
 from .parsing import parse_table
@@ -66,9 +66,9 @@ def sync_project(job_id):
         try:
             project = db.get(Project, job.project_id)
             counts = []
-            if not settings.demo_mode:
+            if not settings.demo_mode or procore_sandbox_live:
                 connections = {c.provider: c for c in db.scalars(select(Connection).where(Connection.organization_id == project.organization_id))}
-                if project.procore_project_id:
+                if project.procore_project_id and project.external_source != 'demo':
                     connection = connections.get('procore')
                     if not connection:
                         raise HTTPException(409, 'Connect Procore to sync this project.')
@@ -77,12 +77,12 @@ def sync_project(job_id):
                         for r in records:
                             values = {'number': str(r.get('number', '')), 'status': normalize_status(r.get('status')), 'due_date': (r.get('due_date') or '')[:10] or None, 'raw_json': r}
                             if cls == RFI:
-                                values.update(subject=r.get('subject'), question=r.get('question', ''), response=str(r.get('response') or ''))
+                                values.update(subject=r.get('subject'), question=r.get('question') or ((r.get('questions') or [{}])[0].get('plain_text_body') or (r.get('questions') or [{}])[0].get('body') or ''), response=str(r.get('response') or ''))
                             else:
                                 values.update(title=r.get('title'), description=r.get('description'))
                             upsert(db, cls, project.id, r['id'], values)
                         counts.append(f'{len(records)} {kind}')
-                if 'microsoft' in connections:
+                if 'microsoft' in connections and not settings.demo_mode:
                     graph = Microsoft(valid_token(db, connections['microsoft']))
                     matching = [e for e in graph.messages() if match_email(e, project)]
                     for e in matching:
@@ -92,12 +92,19 @@ def sync_project(job_id):
                     for workbook in project.settings.get('workbooks', []):
                         data, name = graph.download_file(workbook['drive_id'], workbook['item_id'])
                         ingest_rows(db, project.id, parse_table(data, name, workbook['kind']), workbook['kind'], 'graph:' + workbook['item_id'])
-                if not counts and not project.settings.get('workbooks'):
+                if not counts and not project.settings.get('workbooks') and not settings.demo_mode:
                     counts.append('No connected sources; local records evaluated')
+            if counts:
+                # Log a sync only when it found something different, so syncing five times a day adds no noise to the feed.
+                from .collab import log_change
+                summary = 'Procore sync: ' + ', '.join(counts)
+                last = db.scalar(select(ChangeEvent).where(ChangeEvent.project_id == project.id, ChangeEvent.kind == 'sync').order_by(ChangeEvent.created_at.desc()))
+                if not last or last.summary != summary:
+                    log_change(db, project.id, None, 'sync', summary)
             db.flush()
             run_rules(db, project.id)
             job.status = 'complete'
-            job.detail = 'Demo records evaluated; no provider contacted.' if settings.demo_mode else 'Synced: ' + ', '.join(counts)
+            job.detail = 'Demo records evaluated; no provider contacted.' if settings.demo_mode and not counts else 'Synced: ' + ', '.join(counts)
             job.finished_at = now()
             db.commit()
         except Exception as exc:

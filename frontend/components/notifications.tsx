@@ -7,7 +7,7 @@ import {api,Row} from '../lib/api';
 
 export const whenText=(w:Row)=>w.days<0?`Overdue ${-w.days}d`:w.days===0?'Due today':w.days===1?'Due tomorrow':`Due in ${w.days} days`;
 const KIND:Record<string,string>={work:'Work',inspection:'Inspection',delivery:'Delivery',task:'Task'};
-const hrefFor=(w:Row)=>`/projects/${w.project_id}${w.section==='overview'?'':'/'+w.section}`;
+const hrefFor=(w:Row)=>`/projects/${w.project_id}${w.section==='schedule'?'':'/'+w.section}`;
 
 // Everything due within a week across the projects this person can open.
 export function Notifications(){

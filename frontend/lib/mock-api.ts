@@ -69,6 +69,9 @@ export async function mockApi(path:string,body?:unknown,method?:string):Promise<
   if(recorded)return recorded;
   throw new Error(unsupported)
  }
+ if(m==='GET'&&/^\/projects\/[^/]+\/changes$/.test(clean))return {events:[],new:0,role:'member'};
+ if(m==='GET'&&/^\/projects\/[^/]+\/team$/.test(clean))return [];
+ if(m==='GET'&&clean==='/me/digest')return {digest:'off',email_enabled:false,preview:null};
  if(m!=='GET')throw new Error(unsupported);
 
  if(clean in data||('GET '+clean) in data){return data['GET '+clean]}

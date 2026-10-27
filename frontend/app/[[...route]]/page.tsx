@@ -6,7 +6,7 @@ import demo from '../../lib/demo-data.json';
 export async function generateStaticParams() {
   if (process.env.NEXT_PUBLIC_STATIC_DEMO !== 'true') return [];
   const ids = (demo['GET /projects'] as { id: string }[]).map(p => p.id);
-  const sections = ['schedule', 'procurement', 'rfi', 'agents', 'more', 'records', 'documents', 'settings', 'ai', 'risks'];
+  const sections = ['overview', 'schedule', 'procurement', 'rfi', 'agents', 'more', 'records', 'documents', 'settings', 'ai', 'risks'];
   return [
     { route: [] }, { route: ['launch'] },
     ...['login', 'signup', 'forgot', 'reset', 'verify', 'dashboard', 'projects', 'integrations', 'settings', 'tutorial'].map(r => ({ route: [r] })),

@@ -55,8 +55,11 @@ def workflow(db, project_id, kind, data, status='draft', key=None):
     return row
 
 
-def record_audit(db, user, action, project_id, record_id=None):
+def record_audit(db, user, action, project_id, record_id=None, summary=None):
     db.add(Audit(organization_id=user.organization_id, user_id=user.id, action=action, detail={'project_id':project_id, 'record_id':record_id}))
+    if summary:
+        from .collab import log_change
+        log_change(db, project_id, user.id, 'schedule', summary, record_id)
 
 
 def entries(db, project_id, kind):
@@ -200,7 +203,7 @@ def apply_plan(project_id: str, plan_id: str, body: ApplyPlan, db: Session=Db,us
     row.status='applied'
     row.data={**row.data,'tasks':tasks}
     p.start_date,p.finish_date=str(body.start_date),str(body.turnover_date)
-    record_audit(db,user,'schedule.applied',project_id,row.id)
+    record_audit(db,user,'schedule.applied',project_id,row.id,f'Applied a new schedule with {len(tasks)} activities, {pretty(body.start_date)} to {pretty(body.turnover_date)}.')
     db.commit()
     return workboard(db,p)
 
@@ -220,7 +223,7 @@ def progress(project_id: str,activity_id: str,body: Progress,db: Session=Db,user
     today=local_today(p).isoformat()
     # Actual dates are kept as work happens so later projects can learn from real durations, not just the plan.
     a.raw_json={**raw,'actual_start':(raw.get('actual_start') or today) if body.percent_complete>0 else None,'actual_finish':today if body.percent_complete==100 else None}
-    record_audit(db,user,'activity.progress',project_id,a.id)
+    record_audit(db,user,'activity.progress',project_id,a.id,f'{a.name} is now {int(body.percent_complete)}% complete.')
     db.commit()
     return public(a)
 
@@ -287,7 +290,7 @@ def edit_activity_plan(project_id: str,activity_id: str,body: ActivityPlan,db: S
     finish=finish_from_duration(p,body.start_date,body.duration_days) if body.duration_days else body.finish_date
     a.start_date=body.start_date.isoformat()
     a.finish_date=finish.isoformat()
-    record_audit(db,user,'activity.plan',project_id,a.id)
+    record_audit(db,user,'activity.plan',project_id,a.id,f'{a.name} now runs {pretty(a.start_date)} to {pretty(a.finish_date)}.')
     db.commit()
     return public(a)
 
@@ -310,7 +313,7 @@ def add_activity(project_id: str,body: NewActivity,db: Session=Db,user=Auth):
     a=Activity(project_id=project_id,name=body.name.strip(),trade=body.trade.strip(),start_date=body.start_date.isoformat(),finish_date=finish.isoformat(),percent_complete=0,raw_json=raw)
     db.add(a)
     db.flush()
-    record_audit(db,user,'activity.create',project_id,a.id)
+    record_audit(db,user,'activity.create',project_id,a.id,f'Added {a.name}, {pretty(a.start_date)} to {pretty(a.finish_date)}.')
     db.commit()
     return public(a)
 

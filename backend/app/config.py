@@ -18,8 +18,13 @@ class Settings(BaseSettings):
     token_encryption_key: str = ''
     procore_client_id: str = ''
     procore_client_secret: str = ''
-    procore_base_url: str = 'https://api.procore.com'
-    procore_login_url: str = 'https://login.procore.com'
+    # 'sandbox' targets Procore's free Developer Sandbox and makes real API calls even while DEMO_MODE=true.
+    # 'production' (or empty) keeps the production hosts and the existing live-mode rules.
+    procore_env: str = ''
+    # authorization_code: a user signs in to Procore. client_credentials: server-to-server with the app's service account.
+    procore_grant: str = 'authorization_code'
+    procore_base_url: str = ''
+    procore_login_url: str = ''
     microsoft_client_id: str = ''
     microsoft_client_secret: str = ''
     microsoft_tenant_id: str = 'organizations'
@@ -50,6 +55,8 @@ class Settings(BaseSettings):
     smtp_user: str = ''
     smtp_password: str = ''
     mail_from: str = ''
+    # Shared secret for the daily digest job (/api/digests/run). Empty disables the endpoint.
+    cron_secret: str = ''
     signups_per_hour: int = 60
     max_organizations: int = 2000
     private_demo_password: str = ''
@@ -71,6 +78,15 @@ if settings.groq_api_key and not settings.llm_api_key:
     settings.llm_model = settings.llm_model or 'llama-3.3-70b-versatile'
     if settings.ai_provider == 'openai' and not settings.openai_api_key:
         settings.ai_provider = 'compatible'
+if settings.procore_env not in ('', 'sandbox', 'production'):
+    raise RuntimeError('PROCORE_ENV must be sandbox or production.')
+if settings.procore_grant not in ('authorization_code', 'client_credentials'):
+    raise RuntimeError('PROCORE_GRANT must be authorization_code or client_credentials.')
+_sandbox = settings.procore_env == 'sandbox'
+settings.procore_base_url = settings.procore_base_url or ('https://sandbox.procore.com' if _sandbox else 'https://api.procore.com')
+settings.procore_login_url = settings.procore_login_url or ('https://login-sandbox.procore.com' if _sandbox else 'https://login.procore.com')
+# True when Procore calls are real even though the rest of the app is in demo mode.
+procore_sandbox_live = _sandbox and bool(settings.procore_client_id and settings.procore_client_secret)
 if settings.ai_provider not in ('openai', 'anthropic', 'compatible'):
     raise RuntimeError('AI_PROVIDER must be openai, anthropic or compatible.')
 if not settings.demo_mode and (not settings.jwt_secret or not settings.token_encryption_key):

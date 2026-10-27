@@ -1,3 +1,13 @@
 {
-  "functions": { "index.py": { "maxDuration": 60 } }
+  "functions": {
+    "index.py": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/digests/run",
+      "schedule": "0 13 * * *"
+    }
+  ]
 }

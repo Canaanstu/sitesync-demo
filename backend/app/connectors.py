@@ -63,6 +63,15 @@ class OAuthConnector:
     def refresh_token(self, token):
         return self.exchange(grant_type='refresh_token', refresh_token=token)
 
+    def client_credentials(self):
+        # Server-to-server grant for the Procore app's service account; no redirect or user sign-in.
+        if not self.client_id or not self.client_secret:
+            raise HTTPException(409, 'Configure this provider in the backend environment first.')
+        value = request('POST', self.token_url, data=dict(grant_type='client_credentials', client_id=self.client_id, client_secret=self.client_secret)).json()
+        if not value.get('access_token'):
+            raise HTTPException(502, 'The provider returned an invalid token response.')
+        return value
+
 
 def save_tokens(connection, tokens):
     connection.access_token_encrypted = encrypt_token(tokens['access_token'])
@@ -77,9 +86,12 @@ def valid_token(db, connection):
     if not connection.access_token_encrypted:
         raise HTTPException(409, 'Connect the provider before syncing.')
     if (connection.expires_at or 0) < time.time() + 300:
-        if not connection.refresh_token_encrypted:
-            raise HTTPException(409, 'This connection expired. Please reconnect.')
-        tokens = OAuthConnector(connection.provider).refresh_token(decrypt_token(connection.refresh_token_encrypted))
+        if connection.provider == 'procore' and settings.procore_grant == 'client_credentials':
+            tokens = OAuthConnector('procore').client_credentials()
+        else:
+            if not connection.refresh_token_encrypted:
+                raise HTTPException(409, 'This connection expired. Please reconnect.')
+            tokens = OAuthConnector(connection.provider).refresh_token(decrypt_token(connection.refresh_token_encrypted))
         save_tokens(connection, tokens)
         db.commit()
     return decrypt_token(connection.access_token_encrypted)

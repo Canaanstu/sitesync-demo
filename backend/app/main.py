@@ -15,7 +15,7 @@ from sqlalchemy import select, func, text, delete
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
-from .config import settings
+from .config import settings, procore_sandbox_live
 from .database import Base, engine, SessionLocal, get_db
 from .models import *
 from .security import *
@@ -34,6 +34,7 @@ from .rules import router as rules_router
 from .exceptions import router as exceptions_router
 from .launch import router as launch_router
 from .bluebeam import router as bluebeam_router
+from .collab import router as collab_router
 
 
 def add_missing_columns():
@@ -46,6 +47,14 @@ def add_missing_columns():
         with engine.begin() as conn:
             conn.execute(text('ALTER TABLE organizations ADD COLUMN invite_code VARCHAR'))
             conn.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ix_organizations_invite_code ON organizations (invite_code)'))
+    with engine.begin() as conn:
+        if 'role' not in {c['name'] for c in inspect(engine).get_columns('project_members')}:
+            conn.execute(text("ALTER TABLE project_members ADD COLUMN role VARCHAR NOT NULL DEFAULT 'member'"))
+        user_cols = {c['name'] for c in inspect(engine).get_columns('users')}
+        if 'digest' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN digest VARCHAR NOT NULL DEFAULT 'daily'"))
+        if 'digest_sent_at' not in user_cols:
+            conn.execute(text('ALTER TABLE users ADD COLUMN digest_sent_at VARCHAR'))
     # chat_messages shipped without these two columns during development
     chat_cols = {c['name'] for c in inspect(engine).get_columns('chat_messages')} if inspect(engine).has_table('chat_messages') else None
     if chat_cols is not None:
@@ -118,6 +127,7 @@ app.include_router(rules_router)
 app.include_router(exceptions_router)
 app.include_router(launch_router)
 app.include_router(bluebeam_router)
+app.include_router(collab_router)
 app.add_middleware(CORSMiddleware, allow_origins=[settings.app_url], allow_credentials=True, allow_methods=['GET', 'POST', 'PATCH', 'DELETE'], allow_headers=['Content-Type'])
 
 
@@ -592,6 +602,11 @@ def revoke_member(project_id: str, member_id: str, db: Session = Db, user=Auth):
     return {'ok': True}
 
 
+def simulated(provider):
+    # Demo mode simulates providers, except Procore when pointed at a real Developer Sandbox.
+    return settings.demo_mode and not (provider == 'procore' and procore_sandbox_live)
+
+
 @app.get('/api/integrations')
 def integrations(db: Session = Db, user=Auth):
     rows = {c.provider: public(c) for c in db.scalars(select(Connection).where(Connection.organization_id == user.organization_id))}
@@ -602,7 +617,7 @@ def integrations(db: Session = Db, user=Auth):
 def connect(provider: str, db: Session = Db, user=Auth):
     require_admin(user)
     connector = OAuthConnector(provider)
-    if settings.demo_mode:
+    if simulated(provider):
         c = db.scalar(select(Connection).where(Connection.organization_id == user.organization_id, Connection.provider == provider))
         if not c:
             c = Connection(organization_id=user.organization_id, provider=provider)
@@ -612,6 +627,15 @@ def connect(provider: str, db: Session = Db, user=Auth):
         audit(db, user, 'integration.demo_connect', {'provider': provider})
         db.commit()
         return {'demo': True, 'message': 'Simulated connection enabled. No external account was contacted.'}
+    if provider == 'procore' and settings.procore_grant == 'client_credentials':
+        c = db.scalar(select(Connection).where(Connection.organization_id == user.organization_id, Connection.provider == provider))
+        if not c:
+            c = Connection(organization_id=user.organization_id, provider=provider)
+            db.add(c)
+        save_tokens(c, connector.client_credentials())
+        audit(db, user, 'integration.connected', {'provider': provider, 'grant': 'client_credentials'})
+        db.commit()
+        return {'message': 'Connected to Procore with the app service account.'}
     state = create_state(user.id, provider)
     return {'url': connector.get_authorization_url(state)}
 
@@ -644,10 +668,14 @@ def connection_for(db, user, provider):
 def test_connection(provider: str, db: Session = Db, user=Auth):
     require_admin(user)
     c = connection_for(db, user, provider)
-    if settings.demo_mode:
+    if simulated(provider):
         return {'message': 'Demo connection is ready; no live API call was made.'}
     token = valid_token(db, c)
-    Procore(token).get('me') if provider == 'procore' else Microsoft(token).get('me')
+    if provider == 'procore':
+        # Service accounts have no user profile, so list companies instead of calling /me.
+        Procore(token).get('companies' if settings.procore_grant == 'client_credentials' else 'me')
+    else:
+        Microsoft(token).get('me')
     return {'message': 'Connection verified.'}
 
 
@@ -667,33 +695,65 @@ def disconnect(connection_id: str, db: Session = Db, user=Auth):
 def companies(db: Session = Db, user=Auth):
     require_admin(user)
     c = connection_for(db, user, 'procore')
-    return [{'id': 'demo-company', 'name': 'Schimenti Construction Company (demo)'}] if settings.demo_mode else Procore(valid_token(db, c)).companies()
+    return [{'id': 'demo-company', 'name': 'Schimenti Construction Company (demo)'}] if simulated('procore') else Procore(valid_token(db, c)).companies()
 
 
 @app.get('/api/procore/companies/{company_id}/projects')
 def provider_projects(company_id: str, db: Session = Db, user=Auth):
     require_admin(user)
     c = connection_for(db, user, 'procore')
-    return [{'id': 'demo-procore-project', 'name': 'Harbor House | Procore Demo'}] if settings.demo_mode else Procore(valid_token(db, c), company_id).projects(company_id)
+    return [{'id': 'demo-procore-project', 'name': 'Harbor House | Procore Demo'}] if simulated('procore') else Procore(valid_token(db, c), company_id).projects(company_id)
+
+
+def import_one(db, user, company_id, project_id, candidates):
+    candidate = next((p for p in candidates if str(p['id']) == project_id), None)
+    if not candidate:
+        raise HTTPException(404, 'Project is not available through this connection.')
+    p = db.scalar(select(Project).where(Project.organization_id == user.organization_id, Project.procore_company_id == company_id, Project.procore_project_id == project_id))
+    if not p:
+        p = seed_project(db, user.organization_id, candidate['name']) if simulated('procore') else Project(organization_id=user.organization_id, name=candidate['name'], settings={'aliases': [candidate['name']], 'sync_enabled': True, 'sync_minutes': 15})
+        p.external_source = 'demo' if simulated('procore') else 'procore'
+        p.procore_company_id, p.procore_project_id = company_id, project_id
+        db.add(p)
+        db.flush()
+        grant_projects(db, user.organization_id, project_id=p.id)
+        from .collab import log_change
+        log_change(db, p.id, user.id, 'import', 'Imported from Procore.')
+    return p
 
 
 @app.post('/api/procore/import-project')
 def import_project(body: ImportProject, db: Session = Db, user=Auth):
     require_admin(user)
-    candidates = provider_projects(body.company_id, db, user)
-    candidate = next((p for p in candidates if str(p['id']) == body.project_id), None)
-    if not candidate:
-        raise HTTPException(404, 'Project is not available through this connection.')
-    p = db.scalar(select(Project).where(Project.organization_id == user.organization_id, Project.procore_company_id == body.company_id, Project.procore_project_id == body.project_id))
-    if not p:
-        p = seed_project(db, user.organization_id, candidate['name']) if settings.demo_mode else Project(organization_id=user.organization_id, name=candidate['name'], settings={'aliases': [candidate['name']], 'sync_enabled': True, 'sync_minutes': 15})
-        p.external_source = 'demo' if settings.demo_mode else 'procore'
-        p.procore_company_id, p.procore_project_id = body.company_id, body.project_id
-        db.add(p)
-        db.flush()
-        grant_projects(db, user.organization_id, project_id=p.id)
-        db.commit()
+    p = import_one(db, user, body.company_id, body.project_id, provider_projects(body.company_id, db, user))
+    db.commit()
     return public(p)
+
+
+class ImportMany(BaseModel):
+    company_id: str = Field(pattern=r'^[0-9a-zA-Z_-]{1,80}$')
+    project_ids: list[str] = Field(default_factory=list, max_length=200)
+    all: bool = False
+
+
+@app.post('/api/procore/import-projects')
+def import_projects(body: ImportMany, db: Session = Db, user=Auth):
+    """Import many Procore projects at once: the ids given, or every project the connection can see. Already-imported projects are skipped."""
+    require_admin(user)
+    candidates = provider_projects(body.company_id, db, user)
+    wanted = [str(c['id']) for c in candidates] if body.all else [str(i) for i in dict.fromkeys(body.project_ids)]
+    if not wanted:
+        raise HTTPException(422, 'Choose at least one project to import.')
+    imported, skipped = [], 0
+    for pid in wanted:
+        exists = db.scalar(select(Project.id).where(Project.organization_id == user.organization_id, Project.procore_company_id == body.company_id, Project.procore_project_id == pid))
+        if exists:
+            skipped += 1
+            continue
+        imported.append(import_one(db, user, body.company_id, pid, candidates))
+    audit(db, user, 'procore.import_many', {'imported': len(imported), 'skipped': skipped})
+    db.commit()
+    return {'imported': [public(p) for p in imported], 'skipped': skipped, 'message': f'Imported {len(imported)} project{"" if len(imported) == 1 else "s"}' + (f'; {skipped} already in SiteSync.' if skipped else '.')}
 
 
 @app.post('/api/projects/{project_id}/sync')

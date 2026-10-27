@@ -216,3 +216,34 @@ def test_postgres_vector_query_compiles():
     distance = cast(Chunk.embedding, Vector(1536)).cosine_distance([0.1] * 1536)
     sql = str(select(Chunk).where(Chunk.project_id == 'authorized-project', distance < 0.4).order_by(distance).compile(dialect=postgresql.dialect()))
     assert '<=>' in sql and 'project_id' in sql
+
+
+def test_procore_sandbox_live(client, monkeypatch):
+    # Sandbox mode makes real Procore calls while the rest of the app stays in demo mode.
+    import app.main as main
+    import app.connectors as connectors
+    calls = []
+
+    def fake_request(method, url, **kwargs):
+        calls.append((method, url))
+
+        class R:
+            def json(self):
+                if url.endswith('/oauth/token'):
+                    return {'access_token': 'sandbox-token', 'expires_in': 7200}
+                if url.endswith('/companies'):
+                    return [{'id': 42, 'name': 'Sandbox Co'}]
+                return []
+        return R()
+
+    monkeypatch.setattr(main, 'procore_sandbox_live', True)
+    monkeypatch.setattr(connectors, 'request', fake_request)
+    monkeypatch.setattr(main.settings, 'procore_grant', 'client_credentials')
+    monkeypatch.setattr(connectors.settings, 'procore_client_id', 'id')
+    monkeypatch.setattr(connectors.settings, 'procore_client_secret', 'secret')
+    monkeypatch.setattr(connectors.settings, 'procore_login_url', 'https://login-sandbox.procore.com')
+    monkeypatch.setattr(connectors.settings, 'procore_base_url', 'https://sandbox.procore.com')
+    assert 'Connected' in client.post('/api/integrations/procore/connect').json()['message']
+    assert client.get('/api/procore/companies').json() == [{'id': 42, 'name': 'Sandbox Co'}]
+    assert any(u.startswith('https://login-sandbox.procore.com/oauth/token') for _, u in calls)
+    assert any(u == 'https://sandbox.procore.com/rest/v1.0/companies' for _, u in calls)

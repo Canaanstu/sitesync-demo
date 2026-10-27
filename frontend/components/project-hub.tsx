@@ -101,6 +101,6 @@ const CREW_GUIDE:[ReactNode,string,ReactNode][]=[
 ];
 
 export function Tutorial(){
- const steps:[ReactNode,string,string][]=[[<Pointer size={26} key="a"/>,'Pick a task','Open a project. Tap a card.'],[<PenLine size={26} key="b"/>,'Review the draft','Edit it. Nothing sends without you.'],[<Check size={26} key="c"/>,'Clear it','Mark it done when it is handled.']];
+ const steps:[ReactNode,string,string][]=[[<Pointer size={26} key="a"/>,'Open the schedule','Every project opens on what is due in the next 7 days.'],[<PenLine size={26} key="b"/>,'Note it now','Write or speak a note. It is saved with the time.'],[<Check size={26} key="c"/>,'Review, then clear it','Nothing sends without you. Mark tasks done when handled.']];
  return <><h1>How it works</h1><div className="steps">{steps.map(([e,t,d],i)=><div className="step" key={String(t)}><span className="step-n">{i+1}</span><span className="step-emoji">{e}</span><b>{t}</b><small>{d}</small></div>)}</div><h2 id="crew">Working with your crew</h2><div className="guide">{CREW_GUIDE.map(([icon,title,body],i)=><div className="guide-item" key={i}><span className="row-icon">{icon}</span><div><h3>{title}</h3>{typeof body==='string'?<p>{body}</p>:body}</div></div>)}</div><Link className="btn primary" href="/dashboard">Let’s go <ArrowRight size={18}/></Link></>;
 }

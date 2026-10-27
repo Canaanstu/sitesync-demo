@@ -730,3 +730,34 @@ html[data-theme=dark] .gx .chat-source{background:#16212b}
 .gx .chat-source-close{flex:none;width:36px;height:36px;min-height:36px;padding:0;display:grid;place-items:center;border-radius:50%}
 .gx .assistant-source .section-heading{align-items:flex-start}
 .gx .answer-list li>span:only-child{color:var(--ink)}
+
+/* schedule-first project page: next 7 days, quick note, change feed, how-to cards */
+.gx .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.gx .sched-top{display:grid;gap:14px;margin:8px 0 22px}
+.gx .next7{background:var(--paper);border:1.5px solid var(--accent);border-radius:20px;padding:16px 18px}
+.gx .next7-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.gx .next7 h3{margin:0;font-size:18px}
+.gx .next7 ul{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
+.gx .next7 li{display:flex;justify-content:space-between;gap:12px;padding:8px 12px;border-radius:12px;background:var(--soft)}
+.gx .next7 li.late{background:var(--blue-soft);border-left:4px solid var(--accent-d)}
+.gx .role-pill{font-size:12px;font-weight:800;letter-spacing:.04em;color:var(--accent-t);background:var(--blue-soft);padding:4px 10px;border-radius:999px}
+.gx .quick-note{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--paper);border:1.5px solid var(--line);border-radius:20px;padding:10px}
+.gx .quick-note input{flex:1 1 220px;min-width:0}
+.gx .quick-note select{flex:0 1 180px;min-width:0}
+.gx .feed{background:var(--paper);border:1.5px solid var(--line);border-radius:20px;overflow:hidden}
+.gx .feed-toggle{width:100%;display:flex;align-items:center;gap:8px;justify-content:flex-start;border:0;border-radius:0;background:transparent;min-height:48px;padding:0 16px;font-weight:700}
+.gx .feed-toggle small{margin-left:auto}
+.gx .feed-toggle i{font-style:normal;font-size:12px;font-weight:800;background:var(--accent);color:#fff;border-radius:999px;padding:1px 8px}
+.gx .feed-list{list-style:none;margin:0;padding:4px 16px 14px;display:grid;gap:8px}
+.gx .feed-list li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
+.gx .feed-list li.new{background:var(--blue-soft);margin:0 -16px;padding:8px 16px}
+.gx .feed-list small{display:block}
+.gx .feed-kind{flex:none;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--accent-t);background:var(--blue-soft);border-radius:999px;padding:3px 9px;margin-top:2px}
+.gx .howto{display:flex;gap:12px;align-items:flex-start;background:var(--blue-soft);border:1.5px solid var(--blue-mid);border-radius:20px;padding:14px 16px;margin:8px 0 14px}
+.gx .howto>svg{flex:none;color:var(--accent-d);margin-top:2px}
+.gx .howto>div{flex:1}
+.gx .howto ol{list-style:decimal;margin:6px 0 6px 18px;padding:0;display:grid;gap:4px;line-height:1.45}
+.gx .howto .icon{width:32px;min-width:32px;height:32px;min-height:32px}
+.gx .role-select select{min-height:40px;max-width:100%}
+.gx .import-bulk{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0}
+.gx .digest-preview{white-space:pre-wrap;font:13px/1.5 ui-monospace,monospace;background:var(--soft);border-radius:12px;padding:12px;margin:8px 0 0;overflow:auto;max-height:320px}

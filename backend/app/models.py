@@ -44,6 +44,9 @@ class User(Identity, Base):
     password_hash = Column(String, nullable=False)
     # Existing accounts predate verification, so the column defaults to verified; sign-up sets it explicitly.
     email_verified = Column(Boolean, nullable=False, default=False, server_default=true())
+    # 'daily' = one summary email per day, and only when something changed. 'off' = in-app feed only.
+    digest = Column(String, nullable=False, default='daily', server_default='daily')
+    digest_sent_at = Column(String)
 
 
 class Project(Identity, Base):
@@ -64,6 +67,8 @@ class ProjectMember(Base):
     __tablename__ = 'project_members'
     project_id = Column(String, ForeignKey('projects.id', ondelete='CASCADE'), primary_key=True)
     user_id = Column(String, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    # What this person does on this project: 'super' runs the schedule from the field, 'pm' reviews it, 'member' is everyone else.
+    role = Column(String, nullable=False, default='member', server_default='member')
 
 
 class Connection(Identity, Base):
@@ -210,6 +215,24 @@ class ChatFile(Identity, Base):
 class ChatRead(Base):
     """When each person last opened a project's chat, so unread counts are per person."""
     __tablename__ = 'chat_reads'
+    project_id = Column(String, ForeignKey('projects.id', ondelete='CASCADE'), primary_key=True)
+    user_id = Column(String, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    last_read_at = Column(String, nullable=False)
+
+
+class ChangeEvent(Identity, Base):
+    """What changed on a project and who changed it: the team's change feed, field notes and the source of the daily digest."""
+    __tablename__ = 'change_events'
+    project_id = Column(String, ForeignKey('projects.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = Column(String, ForeignKey('users.id', ondelete='SET NULL'))
+    kind = Column(String, nullable=False)  # schedule | note | import | sync
+    summary = Column(Text, nullable=False)
+    record_id = Column(String)
+
+
+class FeedRead(Base):
+    """When each person last opened a project's change feed, so 'new since you looked' is per person."""
+    __tablename__ = 'feed_reads'
     project_id = Column(String, ForeignKey('projects.id', ondelete='CASCADE'), primary_key=True)
     user_id = Column(String, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
     last_read_at = Column(String, nullable=False)
