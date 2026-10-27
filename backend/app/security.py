@@ -5,13 +5,13 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 from redis import Redis
 from .config import settings, fernet
-from .database import get_db
-from .models import User, Project, ProjectMember
+from .database import get_db, SessionLocal
+from .models import User, Project, ProjectMember, OAuthState
 
-_states = {}
 _limits = {}
 
 
@@ -96,7 +96,12 @@ def create_state(user_id, provider):
     state = secrets.token_urlsafe(32)
     value = f'{user_id}:{provider}'
     if settings.demo_mode:
-        _states[state] = (value, time.time() + 600)
+        # Serverless instances share no memory, so the callback can land on a different one than the connect request.
+        # The shared database holds the one-time token instead.
+        with SessionLocal() as db:
+            db.execute(delete(OAuthState).where(OAuthState.expires_at < time.time()))
+            db.add(OAuthState(state=state, value=value, expires_at=time.time() + 600))
+            db.commit()
     else:
         Redis.from_url(settings.redis_url).setex('oauth:' + state, 600, value)
     return state
@@ -104,8 +109,13 @@ def create_state(user_id, provider):
 
 def consume_state(state, user_id, provider):
     if settings.demo_mode:
-        value, expiry = _states.pop(state, ('', 0))
-        value = value if expiry > time.time() else ''
+        value = ''
+        with SessionLocal() as db:
+            row = db.get(OAuthState, state)
+            # rowcount makes it single-use even if two requests race: only one delete can remove the row
+            if row and db.execute(delete(OAuthState).where(OAuthState.state == state)).rowcount == 1 and row.expires_at > time.time():
+                value = row.value
+            db.commit()
     else:
         raw = Redis.from_url(settings.redis_url).getdel('oauth:' + state)
         value = raw.decode() if raw else ''

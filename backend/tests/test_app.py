@@ -193,11 +193,16 @@ def test_empty_project_health_is_unknown(client):
 
 
 def test_expired_state_and_token_refresh(monkeypatch, client):
-    from app.security import _states
     from app.connectors import valid_token
-    _states['expired'] = ('u:procore', 0)
+    from app.security import OAuthState
+    with SessionLocal() as db:
+        db.add(OAuthState(state='expired', value='u:procore', expires_at=0))
+        db.commit()
     with pytest.raises(HTTPException):
         consume_state('expired','u','procore')
+    for bad_state in ('garbage', ''):
+        with pytest.raises(HTTPException):
+            consume_state(bad_state, 'u', 'procore')
     with SessionLocal() as db:
         org_id = db.scalar(select(User).where(User.email == 'demo@example.com')).organization_id
         c = db.scalar(select(Connection).where(Connection.organization_id == org_id, Connection.provider == 'procore'))

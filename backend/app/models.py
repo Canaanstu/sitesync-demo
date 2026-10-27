@@ -238,6 +238,14 @@ class FeedRead(Base):
     last_read_at = Column(String, nullable=False)
 
 
+class OAuthState(Base):
+    """One-time OAuth sign-in tokens in demo mode. Lives in the database because serverless instances share no memory."""
+    __tablename__ = 'oauth_states'
+    state = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+    expires_at = Column(Float, nullable=False)
+
+
 class SyncJob(Identity, Base):
     __tablename__ = 'sync_jobs'
     project_id = Column(String, ForeignKey('projects.id'), nullable=False)
