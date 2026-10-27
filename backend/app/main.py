@@ -263,7 +263,7 @@ class MemberRequest(BaseModel):
 
 @app.get('/api/health')
 def health():
-    return {'status': 'ok', 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo, 'local_auto_login': settings.demo_mode and not settings.private_demo, 'signup_open': settings.open_signup, 'email_enabled': mail_enabled()}
+    return {'status': 'ok', 'demo_mode': settings.demo_mode, 'ephemeral_demo': settings.ephemeral_demo, 'local_auto_login': settings.demo_mode and not settings.private_demo, 'signup_open': settings.open_signup, 'email_enabled': mail_enabled(), 'procore_env': settings.procore_env, 'procore_live': procore_sandbox_live}
 
 
 @app.post('/api/auth/login')
@@ -644,12 +644,19 @@ def connect(provider: str, db: Session = Db, user=Auth):
 
 
 @app.get('/api/integrations/{provider}/callback')
-def callback(provider: str, state: str, code: str = '', error: str = '', db: Session = Db, user=Auth):
+def callback(provider: str, state: str = '', code: str = '', error: str = '', db: Session = Db, user=Auth):
     require_write(user)
-    consume_state(state, user.id, provider)
+    # This page opens in its own browser tab, so failures go back to the Tools page with a short code instead of a raw error.
+    try:
+        consume_state(state, user.id, provider)
+    except HTTPException:
+        return RedirectResponse(settings.app_url + '/integrations?error=connection_expired')
     if error or not code:
         return RedirectResponse(settings.app_url + '/integrations?error=connection_cancelled')
-    tokens = OAuthConnector(provider).exchange_code_for_token(code)
+    try:
+        tokens = OAuthConnector(provider).exchange_code_for_token(code)
+    except HTTPException:
+        return RedirectResponse(settings.app_url + '/integrations?error=connection_failed')
     c = db.scalar(select(Connection).where(Connection.organization_id == user.organization_id, Connection.provider == provider))
     if not c:
         c = Connection(organization_id=user.organization_id, provider=provider)

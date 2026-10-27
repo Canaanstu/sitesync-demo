@@ -145,3 +145,17 @@ def test_procore_text_cleanup():
     from app.sync import plain_text
     assert plain_text('<p>Confirm the <b>height</b>.</p><p>Thanks &amp; regards</p>') == 'Confirm the height.\nThanks & regards'
     assert plain_text(None) == ''
+
+
+def test_bad_oauth_callback_returns_to_tools_page_instead_of_raw_error(client):
+    r = client.get('/api/integrations/procore/callback?state=bogus&code=x', follow_redirects=False)
+    assert r.status_code in (302, 307) and 'error=connection_expired' in r.headers['location']
+    state = client.post('/api/integrations/procore/connect').json()
+    assert state  # demo mode: simulated connect has no sign-in url
+    r = client.get('/api/integrations/procore/callback', follow_redirects=False)
+    assert r.status_code in (302, 307) and 'error=connection_expired' in r.headers['location']
+
+
+def test_health_reports_procore_mode(client):
+    h = client.get('/api/health').json()
+    assert 'procore_env' in h and 'procore_live' in h

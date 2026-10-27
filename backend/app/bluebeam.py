@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import get_db
 from .models import Connection, Document, Project, User, now
-from .security import current_user, project_access, require_admin
+from .security import current_user, project_access, require_write
 
 router=APIRouter(prefix='/api/integrations/bluebeam',tags=['Bluebeam demo'])
 CATALOG=[
@@ -36,12 +36,12 @@ def status(db:Session=Depends(get_db),user=Depends(current_user)):
     owner=db.get(User,row.provider_account_id) if row else None
     stamps=[(r.raw_json or {}).get('last_synced_at') for r in db.scalars(select(Document).join(Project).where(Project.organization_id==user.organization_id)) if (r.raw_json or {}).get('provider')=='bluebeam']
     return {'status':'sample connected' if row and row.status=='demo' else 'disconnected','demo_mode':settings.demo_mode,
-        'connection_owner':owner.full_name if owner else None,'can_manage':user.role in ('owner','admin') and (not row or row.provider_account_id==user.id),
+        'connection_owner':owner.full_name if owner else None,'can_manage':user.role!='viewer' and (not row or row.provider_account_id==user.id),
         'scopes':['read_prime (simulated)'],'region':'US (sample)','last_synced_at':max(filter(None,stamps),default=None)}
 
 @router.post('/connect')
 def connect(db:Session=Depends(get_db),user=Depends(current_user)):
-    require_admin(user);demo_only()
+    require_write(user);demo_only()
     row=connection(db,user)
     if row and row.status!='demo':
         raise HTTPException(409,'This preview cannot modify a live Bluebeam connection.')
@@ -64,7 +64,7 @@ class Sync(BaseModel):
 
 @router.post('/sync')
 def sync(body:Sync,db:Session=Depends(get_db),user=Depends(current_user)):
-    require_admin(user);demo_only();row=connection(db,user,True)
+    require_write(user);demo_only();row=connection(db,user,True)
     if row.provider_account_id!=user.id:
         raise HTTPException(403,'Only the connection owner can refresh this sample.')
     project_access(db,user,body.project_id)
@@ -89,7 +89,7 @@ def sync(body:Sync,db:Session=Depends(get_db),user=Depends(current_user)):
 
 @router.delete('/connection')
 def disconnect(db:Session=Depends(get_db),user=Depends(current_user)):
-    require_admin(user)
+    require_write(user)
     row=connection(db,user)
     if row:
         if row.status!='demo':raise HTTPException(409,'This preview cannot disconnect a live Bluebeam connection.')

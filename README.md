@@ -80,6 +80,8 @@ SiteSync talks to Procore through OAuth (`backend/app/connectors.py`): Connect �
    ```
 4. In SiteSync open Tools → Connect, then Projects → Import. Procore calls are real even with `DEMO_MODE=true`; email and Microsoft stay simulated.
 
+**Adding teammates to the sandbox.** Only the app creator exists in a Developer Sandbox. A teammate who tries to connect sees "email address or password is not valid" and gets no reset email, because Procore sends nothing for unknown accounts. Add them once in the sandbox: sign in at `sandbox.procore.com`, open Company Tools → **Directory** → add their email, then they use the emailed link to set a sandbox password (one time only). The version must also be installed in the sandbox company once (Company Tools → Admin → **App Management** → Install App → Install Custom App, paste the Sandbox Installation Key from the app's page). Real customers never see this: they sign in with their normal Procore account.
+
 Sandbox data is test data and cannot be refreshed. Register another app to get a clean sandbox (it has a new company id).
 
 **For a Procore customer.** A Company Admin has two options, both testing against the customer's own data:
