@@ -615,7 +615,7 @@ def integrations(db: Session = Db, user=Auth):
 
 @app.post('/api/integrations/{provider}/connect')
 def connect(provider: str, db: Session = Db, user=Auth):
-    require_admin(user)
+    require_write(user)
     connector = OAuthConnector(provider)
     if simulated(provider):
         c = db.scalar(select(Connection).where(Connection.organization_id == user.organization_id, Connection.provider == provider))
@@ -642,7 +642,7 @@ def connect(provider: str, db: Session = Db, user=Auth):
 
 @app.get('/api/integrations/{provider}/callback')
 def callback(provider: str, state: str, code: str = '', error: str = '', db: Session = Db, user=Auth):
-    require_admin(user)
+    require_write(user)
     consume_state(state, user.id, provider)
     if error or not code:
         return RedirectResponse(settings.app_url + '/integrations?error=connection_cancelled')
@@ -666,7 +666,7 @@ def connection_for(db, user, provider):
 
 @app.post('/api/integrations/{provider}/test')
 def test_connection(provider: str, db: Session = Db, user=Auth):
-    require_admin(user)
+    require_write(user)
     c = connection_for(db, user, provider)
     if simulated(provider):
         return {'message': 'Demo connection is ready; no live API call was made.'}
@@ -693,14 +693,14 @@ def disconnect(connection_id: str, db: Session = Db, user=Auth):
 
 @app.get('/api/procore/companies')
 def companies(db: Session = Db, user=Auth):
-    require_admin(user)
+    require_write(user)
     c = connection_for(db, user, 'procore')
     return [{'id': 'demo-company', 'name': 'Schimenti Construction Company (demo)'}] if simulated('procore') else Procore(valid_token(db, c)).companies()
 
 
 @app.get('/api/procore/companies/{company_id}/projects')
 def provider_projects(company_id: str, db: Session = Db, user=Auth):
-    require_admin(user)
+    require_write(user)
     c = connection_for(db, user, 'procore')
     return [{'id': 'demo-procore-project', 'name': 'Harbor House | Procore Demo'}] if simulated('procore') else Procore(valid_token(db, c), company_id).projects(company_id)
 
@@ -724,7 +724,7 @@ def import_one(db, user, company_id, project_id, candidates):
 
 @app.post('/api/procore/import-project')
 def import_project(body: ImportProject, db: Session = Db, user=Auth):
-    require_admin(user)
+    require_write(user)
     p = import_one(db, user, body.company_id, body.project_id, provider_projects(body.company_id, db, user))
     db.commit()
     return public(p)
@@ -739,7 +739,7 @@ class ImportMany(BaseModel):
 @app.post('/api/procore/import-projects')
 def import_projects(body: ImportMany, db: Session = Db, user=Auth):
     """Import many Procore projects at once: the ids given, or every project the connection can see. Already-imported projects are skipped."""
-    require_admin(user)
+    require_write(user)
     candidates = provider_projects(body.company_id, db, user)
     wanted = [str(c['id']) for c in candidates] if body.all else [str(i) for i in dict.fromkeys(body.project_ids)]
     if not wanted:

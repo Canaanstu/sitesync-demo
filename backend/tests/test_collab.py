@@ -111,3 +111,23 @@ def test_import_all(client):
     again = client.post('/api/procore/import-projects', json={'company_id': 'demo-company', 'all': True}).json()
     assert again['imported'] == [] and again['skipped'] == len(projects)
     assert client.post('/api/procore/import-projects', json={'company_id': 'demo-company', 'project_ids': []}).status_code == 422
+
+
+def test_members_can_connect_but_only_admins_disconnect_and_viewers_cannot_connect(client):
+    from app.security import hash_password
+    with SessionLocal() as db:
+        owner = db.scalar(select(User).where(User.email == 'demo@example.com'))
+        for email, role in (('member-c@x.test', 'member'), ('viewer-c@x.test', 'viewer')):
+            if not db.scalar(select(User).where(User.email == email)):
+                db.add(User(organization_id=owner.organization_id, email=email, full_name=role.title(), role=role, password_hash=hash_password('Passw0rd-long-enough'), email_verified=True))
+        db.commit()
+    with TestClient(app) as m:
+        assert m.post('/api/auth/login', json={'email': 'member-c@x.test', 'password': 'Passw0rd-long-enough'}).status_code == 200
+        assert m.post('/api/integrations/procore/connect').status_code == 200
+        assert m.get('/api/procore/companies').status_code == 200
+        assert m.post('/api/integrations/procore/test').status_code == 200
+        cid = next(i['id'] for i in m.get('/api/integrations').json() if i['provider'] == 'procore')
+        assert m.delete(f'/api/integrations/{cid}').status_code == 403
+    with TestClient(app) as v:
+        assert v.post('/api/auth/login', json={'email': 'viewer-c@x.test', 'password': 'Passw0rd-long-enough'}).status_code == 200
+        assert v.post('/api/integrations/procore/connect').status_code == 403
