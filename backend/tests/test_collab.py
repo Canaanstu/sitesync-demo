@@ -179,9 +179,11 @@ def test_bluebeam_sample_is_shared_with_non_viewers(client):
     with TestClient(app) as m:
         m.post('/api/auth/login', json={'email': 'bb-member@x.test', 'password': 'Passw0rd-long-enough'})
         assert m.get('/api/integrations/bluebeam/status').json()['can_manage'] is True
+        assert m.get('/api/integrations/bluebeam/status').json()['can_disconnect'] is False
         assert m.post('/api/integrations/bluebeam/sync', json=body).status_code == 200
         assert m.delete('/api/integrations/bluebeam/connection').status_code == 403
     with TestClient(app) as v:
         v.post('/api/auth/login', json={'email': 'bb-viewer@x.test', 'password': 'Passw0rd-long-enough'})
         assert v.post('/api/integrations/bluebeam/sync', json=body).status_code == 403
+    assert client.get('/api/integrations/bluebeam/status').json()['can_disconnect'] is True
     assert client.delete('/api/integrations/bluebeam/connection').status_code == 200

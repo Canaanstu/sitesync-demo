@@ -36,7 +36,7 @@ def status(db:Session=Depends(get_db),user=Depends(current_user)):
     owner=db.get(User,row.provider_account_id) if row else None
     stamps=[(r.raw_json or {}).get('last_synced_at') for r in db.scalars(select(Document).join(Project).where(Project.organization_id==user.organization_id)) if (r.raw_json or {}).get('provider')=='bluebeam']
     return {'status':'sample connected' if row and row.status=='demo' else 'disconnected','demo_mode':settings.demo_mode,
-        'connection_owner':owner.full_name if owner else None,'can_manage':user.role!='viewer',
+        'connection_owner':owner.full_name if owner else None,'can_manage':user.role!='viewer','can_disconnect':user.role!='viewer' and (not row or row.provider_account_id==user.id or user.role in ('owner','admin')),
         'scopes':['read_prime (simulated)'],'region':'US (sample)','last_synced_at':max(filter(None,stamps),default=None)}
 
 @router.post('/connect')
