@@ -17,3 +17,5 @@ output/
 **/*.pem
 **/*.key
 frontend/out/
+.DS_Store
+**/.DS_Store
