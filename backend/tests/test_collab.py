@@ -187,3 +187,17 @@ def test_bluebeam_sample_is_shared_with_non_viewers(client):
         assert v.post('/api/integrations/bluebeam/sync', json=body).status_code == 403
     assert client.get('/api/integrations/bluebeam/status').json()['can_disconnect'] is True
     assert client.delete('/api/integrations/bluebeam/connection').status_code == 200
+
+
+def test_due_questions_are_answered_from_the_schedule(client):
+    # Regression: QA found "What is due this week?" got "I could not verify this", because due dates are not in the search index.
+    pid = first_project(client)
+    r = client.post(f'/api/projects/{pid}/ai/chat', json={'question': 'What is due this week?'}).json()
+    assert r['mode'] == 'schedule' and r['confidence'] == 'high'
+    assert 'could not verify' not in r['answer']
+    warned = client.get(f'/api/projects/{pid}/warnings').json()
+    if warned:
+        assert warned[0]['title'] in r['answer']
+    # a question about a specific record still goes to the normal assistant
+    other = client.post(f'/api/projects/{pid}/ai/chat', json={'question': 'Why is RFI 042 a risk?'}).json()
+    assert other['mode'] != 'schedule'

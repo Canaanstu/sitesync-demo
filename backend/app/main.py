@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import hashlib
 import secrets
+import re
 import threading
 import time
 import json
@@ -908,6 +909,28 @@ def clear_history(project_id: str, db: Session = Db, user=Auth):
     return {'removed': removed}
 
 
+DUE_QUESTION = re.compile(r'\b(due|overdue|upcoming|coming up|deadlines?|this week|next week)\b', re.I)
+NOT_DUE = re.compile(r'\b(rfi|submittal|why|explain|draft|risk|block\w*|delay\w*|late)\b', re.I)
+
+
+def schedule_answer(db, project, question):
+    """"What is due this week?" is answered from the schedule itself. The assistant's record search does not index due dates, so it said it could not verify."""
+    from .warnings import due_warnings
+    q = question.lower()
+    items = due_warnings(db, project, horizon=14 if 'next week' in q else None)
+    if 'overdue' in q:
+        items = [w for w in items if w['overdue']]
+    elif 'today' in q:
+        items = [w for w in items if w['days'] <= 0]
+    elif 'tomorrow' in q:
+        items = [w for w in items if w['days'] <= 1]
+    when = lambda w: f'overdue {-w["days"]}d' if w['days'] < 0 else 'due today' if w['days'] == 0 else 'due tomorrow' if w['days'] == 1 else f'due in {w["days"]} days'
+    kinds = {'work': 'schedule', 'delivery': 'procurement', 'task': 'risks'}
+    sources = [{'id': w['key'].split(':', 1)[1], 'type': kinds[w['kind']], 'label': w['title']} for w in items[:8] if w['kind'] in kinds]
+    text = '\n'.join(f'- {w["title"]} ({when(w)})' for w in items[:12]) if items else 'Nothing is due or overdue in that window.'
+    return {'answer': text, 'confidence': 'high', 'sources': sources, 'recommended_actions': ['Open the Schedule tab to update dates or record progress.'] if items else [], 'mode': 'schedule'}
+
+
 @app.post('/api/projects/{project_id}/ai/{task}')
 def ai_request(project_id: str, task: str, body: AIRequest, db: Session = Db, user=Auth):
     project_access(db, user, project_id)
@@ -927,7 +950,11 @@ def ai_request(project_id: str, task: str, body: AIRequest, db: Session = Db, us
     if task == 'chat' and len(words(body.question)) < 4:
         prior = db.scalar(select(Message).where(Message.project_id == project_id, Message.user_id == user.id, Message.role == 'user').order_by(Message.created_at.desc()))
         context = (prior.content if prior and not prior.content.startswith(('draft-', 'explain-')) else '')[:300]
-    result = answer(db, project_id, body.question or risk.title, task, risk, context)
+    project = db.get(Project, project_id)
+    if task == 'chat' and DUE_QUESTION.search(body.question) and not NOT_DUE.search(body.question):
+        result = schedule_answer(db, project, body.question)
+    else:
+        result = answer(db, project_id, body.question or risk.title, task, risk, context)
     db.add_all([Message(project_id=project_id, user_id=user.id, role='user', content=body.question or f'{task}: {risk.title}'), Message(project_id=project_id, user_id=user.id, role='assistant', content=result['answer'], sources=result['sources'])])
     audit(db, user, 'ai.' + task, {'project_id': project_id, 'mode': result['mode']})
     db.commit()
