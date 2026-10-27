@@ -342,6 +342,7 @@
  .gx .mention-list{left:0}
  .gx .tiles.two{grid-template-columns:1fr}
  .gx .assistant-launch{bottom:92px;right:14px}
+ .gx .content{padding-bottom:190px} /* keep the last lines of a page clear of the floating assistant and the dock */
  .gx .modal-backdrop{place-items:end center;padding:0}
  .gx .modal{border-radius:22px 22px 0 0;max-height:92vh}
  .gx .assistant-drawer{border-radius:22px 22px 0 0;height:92vh}
