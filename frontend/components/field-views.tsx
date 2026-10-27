@@ -117,7 +117,7 @@ export function ScheduleView({board,items,risks,canEdit,busy,open,onProgress,war
    {!board.inspections.length&&<div className="empty"><span className="empty-art"><Search size={30}/></span><h3>No inspections</h3></div>}
    <button className="fab" disabled={!canEdit||busy} onClick={()=>open('inspection')}><Plus size={18}/>Inspection</button></div>
   </>:<div className="list">{shown.map(activityRow)}
-   {!shown.length&&<div className="empty"><span className="empty-art">{filterActive?<Search size={30}/>:<PartyPopper size={30}/>}</span><h3>{filterActive?'No tasks match':current==='complete'?'Nothing finished yet':'All done here'}</h3></div>}
+   {!shown.length&&<div className="empty"><span className="empty-art">{filterActive?<Search size={30}/>:activities.length?<PartyPopper size={30}/>:<CalendarDays size={30}/>}</span><h3>{filterActive?'No tasks match':!activities.length?'No schedule yet':current==='complete'?'Nothing finished yet':'All done here'}</h3>{!activities.length&&!filterActive&&<p>Press <b>Build</b> to draft a schedule, add a <b>Task</b>, or import a spreadsheet from Records. Projects imported from Procore bring RFIs and submittals; their schedule is built here.</p>}</div>}
   </div>}
  </>;
 }
