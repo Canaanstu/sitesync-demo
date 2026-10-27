@@ -36,7 +36,7 @@ def status(db:Session=Depends(get_db),user=Depends(current_user)):
     owner=db.get(User,row.provider_account_id) if row else None
     stamps=[(r.raw_json or {}).get('last_synced_at') for r in db.scalars(select(Document).join(Project).where(Project.organization_id==user.organization_id)) if (r.raw_json or {}).get('provider')=='bluebeam']
     return {'status':'sample connected' if row and row.status=='demo' else 'disconnected','demo_mode':settings.demo_mode,
-        'connection_owner':owner.full_name if owner else None,'can_manage':user.role!='viewer' and (not row or row.provider_account_id==user.id),
+        'connection_owner':owner.full_name if owner else None,'can_manage':user.role!='viewer',
         'scopes':['read_prime (simulated)'],'region':'US (sample)','last_synced_at':max(filter(None,stamps),default=None)}
 
 @router.post('/connect')
@@ -45,8 +45,6 @@ def connect(db:Session=Depends(get_db),user=Depends(current_user)):
     row=connection(db,user)
     if row and row.status!='demo':
         raise HTTPException(409,'This preview cannot modify a live Bluebeam connection.')
-    if row and row.provider_account_id!=user.id:
-        raise HTTPException(403,'Only the connection owner can manage this sample connection.')
     if not row:
         row=Connection(organization_id=user.organization_id,provider='bluebeam',provider_account_id=user.id,status='demo',scopes=['read_prime'])
         db.add(row)
@@ -65,8 +63,6 @@ class Sync(BaseModel):
 @router.post('/sync')
 def sync(body:Sync,db:Session=Depends(get_db),user=Depends(current_user)):
     require_write(user);demo_only();row=connection(db,user,True)
-    if row.provider_account_id!=user.id:
-        raise HTTPException(403,'Only the connection owner can refresh this sample.')
     project_access(db,user,body.project_id)
     studio=next((p for p in CATALOG if p['id']==body.studio_project_id),None)
     if not studio:raise HTTPException(404,'Studio sample project not found.')
@@ -93,6 +89,6 @@ def disconnect(db:Session=Depends(get_db),user=Depends(current_user)):
     row=connection(db,user)
     if row:
         if row.status!='demo':raise HTTPException(409,'This preview cannot disconnect a live Bluebeam connection.')
-        if row.provider_account_id!=user.id:raise HTTPException(403,'Only the connection owner can disconnect this sample.')
+        if row.provider_account_id!=user.id and user.role not in ('owner','admin'):raise HTTPException(403,'Only the person who connected the sample, or an administrator, can disconnect it.')
         db.delete(row);db.commit()
     return {'message':'Sample disconnected. Previously imported metadata remains in Project documents. No external grant existed.'}

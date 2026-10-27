@@ -159,3 +159,29 @@ def test_bad_oauth_callback_returns_to_tools_page_instead_of_raw_error(client):
 def test_health_reports_procore_mode(client):
     h = client.get('/api/health').json()
     assert 'procore_env' in h and 'procore_live' in h
+
+
+def test_bluebeam_sample_is_shared_with_non_viewers(client):
+    # Regression: QA found the sample could only be refreshed by whoever connected it, which blocked every teammate.
+    from app.security import hash_password
+    assert client.post('/api/integrations/bluebeam/connect').status_code == 200
+    pid = first_project(client)
+    with SessionLocal() as db:
+        owner = db.scalar(select(User).where(User.email == 'demo@example.com'))
+        for email, role in (('bb-member@x.test', 'member'), ('bb-viewer@x.test', 'viewer')):
+            if not db.scalar(select(User).where(User.email == email)):
+                u = User(organization_id=owner.organization_id, email=email, full_name=role.title(), role=role, password_hash=hash_password('Passw0rd-long-enough'), email_verified=True)
+                db.add(u)
+                db.flush()
+                db.add(ProjectMember(project_id=pid, user_id=u.id))
+        db.commit()
+    body = {'project_id': pid, 'studio_project_id': 'sample-studio-alo'}
+    with TestClient(app) as m:
+        m.post('/api/auth/login', json={'email': 'bb-member@x.test', 'password': 'Passw0rd-long-enough'})
+        assert m.get('/api/integrations/bluebeam/status').json()['can_manage'] is True
+        assert m.post('/api/integrations/bluebeam/sync', json=body).status_code == 200
+        assert m.delete('/api/integrations/bluebeam/connection').status_code == 403
+    with TestClient(app) as v:
+        v.post('/api/auth/login', json={'email': 'bb-viewer@x.test', 'password': 'Passw0rd-long-enough'})
+        assert v.post('/api/integrations/bluebeam/sync', json=body).status_code == 403
+    assert client.delete('/api/integrations/bluebeam/connection').status_code == 200
